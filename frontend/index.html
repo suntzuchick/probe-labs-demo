@@ -15,8 +15,7 @@
 <div id="auth-overlay" class="auth-overlay" style="display:none">
   <div class="auth-card">
     <div class="auth-brand">
-      <span class="masthead-mark">PROBE</span>
-      <h1 class="auth-title">Scientific data notebook</h1>
+      <div class="probe-logo auth-logo">Probe<span class="probe-dot">.</span></div>
       <p class="auth-subtitle">Extraction · Quality · Derivation · Analysis</p>
     </div>
 
@@ -47,10 +46,10 @@
 
 <div class="masthead">
   <div class="masthead-left">
-    <span class="masthead-mark">PROBE</span>
+    <div class="probe-logo masthead-logo">Probe<span class="probe-dot">.</span></div>
     <div>
       <div class="masthead-title">Extraction agent &amp; analysis notebook</div>
-      <div class="masthead-sub">drop data — watch it get read — write real code against it</div>
+      <div class="masthead-sub">Drop files, watch them get read, write real code against the results.</div>
     </div>
   </div>
   <div class="masthead-right">
@@ -107,13 +106,13 @@
     <section class="screen active" id="screen-0">
       <div class="info-gate">
         <div class="info-gate-brand">
-          <span class="masthead-mark">PROBE</span>
+          <div class="probe-logo info-gate-logo">Probe<span class="probe-dot">.</span></div>
           <h1 class="info-gate-title">Scientific data notebook</h1>
           <p class="info-gate-sub">Extraction · Quality · Derivation · Analysis</p>
         </div>
         <div class="info-gate-card">
           <h2 class="info-gate-form-title">Tell us about your project</h2>
-          <p class="info-gate-form-desc">This keeps sessions organised and your export properly attributed.</p>
+          <p class="info-gate-form-desc">This keeps sessions organized and your export properly attributed.</p>
           <form id="info-form" class="info-form" novalidate>
             <div class="info-row">
               <div class="info-field">
@@ -130,14 +129,14 @@
               <input class="info-input" type="email" id="info-email" required autocomplete="email" placeholder="jane@broad.mit.edu">
             </div>
             <div class="info-field">
-              <label class="info-label" for="info-project">What are you analysing? <span class="info-optional">(optional)</span></label>
+              <label class="info-label" for="info-project">What are you analyzing? <span class="info-optional">(optional)</span></label>
               <input class="info-input" type="text" id="info-project" placeholder="e.g. Phase II KRAS inhibitor trial · viability screen · lab panel">
             </div>
             <div class="info-error" id="info-error"></div>
             <button type="submit" class="btn btn-primary info-submit">Get started →</button>
           </form>
         </div>
-        <p class="info-gate-footer">Data stays local — nothing leaves your machine except API calls with column names only.</p>
+        <p class="info-gate-footer">Data stays local. Only column names leave your machine, as part of API calls.</p>
       </div>
     </section>
 
@@ -145,7 +144,7 @@
     <section class="screen" id="screen-1">
       <div class="eyebrow">Stage 1 of 5</div>
       <h1 class="screen-title">Ingest source files</h1>
-      <p class="screen-desc">Drop CSVs, an Excel workbook, a plate map, a protocol PDF, a photographed plate label, or a metadata file. Probe detects the real format and parses the real content — nothing here is simulated.</p>
+      <p class="screen-desc">Drop CSVs, Excel files, PDFs, plate maps, or images. Probe detects the format and reads the real content.</p>
 
       <div class="upload-zone" id="dropzone">
         <input type="file" id="file-input" multiple style="display:none">
@@ -173,7 +172,7 @@
     <section class="screen" id="screen-2">
       <div class="eyebrow">Stage 2 of 5</div>
       <h1 class="screen-title">Extraction agent trace</h1>
-      <p class="screen-desc">A live, line-by-line account of what the agent actually did to each file: format detection, layout classification, and a real confidence score for every column-to-variable mapping it considered.</p>
+      <p class="screen-desc">A live account of what the agent did to each file: format detection, layout classification, and confidence scores for every column mapping.</p>
 
       <div class="terminal" id="terminal"></div>
 
@@ -224,14 +223,14 @@
         <button class="btn btn-export" id="export-btn">Export dataset ↓</button>
       </div>
       <p class="screen-desc" id="notebook-desc">
-        Available variables: <code id="var-list">loading…</code> — real pandas DataFrames. Write code, run the cell, get real output. State persists between cells.
+        Available variables: <code id="var-list">loading…</code>. Real pandas DataFrames. Write code, run the cell, get real output.
       </p>
 
       <div class="generative-row">
-        <input type="text" id="generative-input" class="generative-input" placeholder="Describe the analysis — e.g. 'plot IC50 by cell line' or 'show KM curve by arm'">
-        <button class="btn btn-generate" id="generative-submit-btn">Analyse →</button>
+        <input type="text" id="generative-input" class="generative-input" placeholder='e.g. "plot IC50 by cell line" or "show KM curve by arm"'>
+        <button class="btn btn-generate" id="generative-submit-btn">Analyze →</button>
       </div>
-      <div class="generative-hint" id="generative-hint">Describe the analysis you want. Code is written and run automatically against your data — column names and structure only, never raw values.</div>
+      <div class="generative-hint" id="generative-hint">Describe the analysis you want. Code is written and run automatically against your data. Column names only, never raw values.</div>
 
       <div class="notebook" id="notebook">
         <!-- cells appended here -->

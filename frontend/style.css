@@ -42,11 +42,14 @@ body.is-info .main{display:flex; justify-content:center; padding-top:64px; paddi
   background:var(--paper); position:sticky; top:0; z-index:50;
 }
 .masthead-left{display:flex; align-items:baseline; gap:14px;}
-.masthead-mark{
-  font-family:var(--mono); font-size:13px; letter-spacing:0.06em;
-  color:var(--gold-deep); background:var(--gold-dim);
-  border:1px solid var(--gold); border-radius:3px; padding:3px 8px; font-weight:500;
+.probe-logo{
+  font-family:var(--serif); font-weight:400; color:#1a0a2e; line-height:1;
+  letter-spacing:-0.01em;
 }
+.probe-dot{ color:#FF75D7; }
+.masthead-logo{ font-size:22px; }
+.info-gate-logo{ font-size:38px; margin-bottom:10px; }
+.auth-logo{ font-size:28px; margin-bottom:4px; }
 .masthead-title{font-family:var(--serif); font-size:17px; font-weight:500;}
 .masthead-sub{font-family:var(--mono); font-size:11px; color:var(--slate);}
 .masthead-right{font-family:var(--mono); font-size:11px; color:var(--slate-faint); text-align:right;}
@@ -386,9 +389,6 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 .info-gate-brand{
   text-align:center; margin-bottom:36px;
 }
-.info-gate-brand .masthead-mark{
-  font-size:14px; padding:4px 12px;
-}
 .info-gate-title{
   font-family:var(--serif); font-size:30px; font-weight:500;
   margin:18px 0 6px; color:var(--ink);
@@ -450,7 +450,6 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
   box-shadow:0 4px 32px rgba(78,12,112,0.07);
 }
 .auth-brand{ text-align:center; margin-bottom:28px; }
-.auth-brand .masthead-mark{ font-size:13px; }
 .auth-title{
   font-family:var(--serif); font-size:22px; font-weight:600;
   color:var(--ink); margin:14px 0 4px;
