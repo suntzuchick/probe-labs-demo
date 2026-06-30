@@ -7,20 +7,20 @@
   --slate-faint:#C4A8DA;
   --rule:#E0D0EE;
   --rule-soft:#EDE5F5;
-  /* Blue — primary action */
+  
   --clinical-green:#2289FA;
   --clinical-green-dim:#E5F1FF;
   --clinical-green-deep:#0A5AC0;
-  /* Orange-red — warnings */
+  
   --alert-amber:#FF541C;
   --alert-amber-dim:#FFF0EB;
   --alert-amber-deep:#992800;
   --reject-gray:#C4A8DA;
-  /* Gold — chips, templates, masthead */
+  
   --gold:#F9BB6E;
   --gold-dim:#FEF6E6;
   --gold-deep:#9A6A10;
-  /* Pink — generative / AI elements */
+  
   --pink:#FF75D7;
   --pink-dim:#FEE8F8;
   --pink-deep:#C0309A;
@@ -160,7 +160,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 
 .nav-row{margin-top:32px; display:flex; gap:12px; max-width:920px;}
 
-/* ---------- quality screen ---------- */
+
 .quality-issue-list{max-width:720px; margin-top:4px; display:flex; flex-direction:column; gap:10px;}
 .quality-scanning{font-family:var(--mono); font-size:13px; color:var(--slate); padding:20px 0;}
 .quality-clean{
@@ -198,7 +198,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 .prov-check-fail{color:var(--alert-amber); font-weight:700; margin-right:4px;}
 .quality-fix-cb:disabled{opacity:0.35; cursor:not-allowed;}
 
-/* ---------- notebook header ---------- */
+
 .notebook-header-row{display:flex; align-items:baseline; justify-content:space-between; max-width:920px; gap:12px;}
 .btn-export{
   font-family:var(--mono); font-size:12px; font-weight:600; padding:8px 16px; border-radius:6px;
@@ -209,7 +209,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 .btn-export:hover{background:var(--clinical-green); color:#fff;}
 .btn-export:disabled{opacity:0.5; cursor:not-allowed;}
 
-/* ---------- terminal (extraction trace) ---------- */
+
 .terminal{
   background:#100820; border-radius:10px; padding:20px 22px; max-width:920px;
   font-family:var(--mono); font-size:12.5px; line-height:1.85; max-height:520px; overflow-y:auto;
@@ -234,7 +234,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 .term-cursor{display:inline-block; width:7px; height:13px; background:#2289FA; margin-left:2px; animation:blink 0.9s step-end infinite; vertical-align:middle;}
 @keyframes blink{50%{opacity:0;}}
 
-/* ---------- derivation run ---------- */
+
 .run-track{max-width:640px; margin-top:10px;}
 .run-step{display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid var(--rule-soft); opacity:0.3; transition:opacity 0.4s ease;}
 .run-step.active,.run-step.done{opacity:1;}
@@ -249,7 +249,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 .run-step-name{font-size:14px; font-weight:500;}
 .run-step-meta{font-family:var(--mono); font-size:11px; color:var(--slate-faint); margin-top:3px; min-height:14px;}
 
-/* ---------- generative input ---------- */
+
 .generative-row{display:flex; gap:10px; max-width:920px; margin-bottom:8px;}
 .generative-input{
   flex:1; font-family:var(--sans); font-size:14px; padding:12px 16px; border-radius:8px;
@@ -272,7 +272,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 @keyframes fadeInOut{0%{opacity:0} 10%{opacity:1} 80%{opacity:1} 100%{opacity:0}}
 
 
-/* ---------- notebook ---------- */
+
 .notebook{display:flex; flex-direction:column; gap:14px; margin-bottom:20px;}
 .nb-cell{border:1px solid var(--rule); border-radius:8px; background:var(--paper-raised); overflow:hidden;}
 .nb-cell-input{display:flex; border-bottom:1px solid var(--rule-soft);}
@@ -336,7 +336,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
   border-color:var(--gold); color:var(--gold-deep); background:var(--gold-dim);
 }
 
-/* ---------- provenance footer ---------- */
+
 .prov-footer{
   border-top:1px solid var(--rule-soft);
 }
@@ -377,12 +377,12 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
   font-family:var(--mono); font-size:11px; color:var(--pink-deep); font-weight:600;
 }
 
-/* ---------- masthead user ---------- */
+
 .masthead-user{
   font-family:var(--mono); font-size:11px; color:var(--slate);
 }
 
-/* ---------- info gate (screen-0) ---------- */
+
 .info-gate{
   width:100%; max-width:520px;
 }
@@ -438,7 +438,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
   color:var(--slate-faint); margin-top:20px; line-height:1.55;
 }
 
-/* ---------- auth overlay ---------- */
+
 .auth-overlay{
   position:fixed; inset:0; z-index:9999; background:var(--paper);
   display:flex; align-items:center; justify-content:center; padding:24px;
@@ -498,7 +498,7 @@ h1.screen-title{font-family:var(--serif); font-size:26px; font-weight:500; margi
 }
 .auth-footer a{ color:var(--slate); }
 
-/* ---------- logout button ---------- */
+
 .btn-logout{
   font-size:11px; color:var(--slate); background:none; border:1px solid var(--rule);
   border-radius:5px; padding:3px 10px; cursor:pointer; margin-left:12px;

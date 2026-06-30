@@ -1,4 +1,3 @@
-"""KM curve rendering. Self-contained -- no dependency on any sibling project."""
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

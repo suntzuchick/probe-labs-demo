@@ -1,14 +1,8 @@
-"""
-JSON extractor. Real json.loads parsing. Flattens nested metadata
-structures and maps keys against the same SDTM/assay vocabulary.
-Handles both a single record and a list of records.
-"""
 import json
 from sdtm_mapping import map_columns
 
 
 def _flatten(obj, prefix=""):
-    """Flatten nested dict/list structure into dotted-key leaf values."""
     flat = {}
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -16,7 +10,6 @@ def _flatten(obj, prefix=""):
             flat.update(_flatten(v, key))
     elif isinstance(obj, list):
         if len(obj) > 0 and all(isinstance(x, dict) for x in obj):
-            # list of records -- treat as rows, not a single flat object
             flat[prefix or "_root_list"] = obj
         else:
             flat[prefix or "_root_value"] = obj
@@ -32,7 +25,6 @@ def extract_json(content: bytes, filename: str) -> dict:
         return {"status": "error", "filename": filename, "error": f"Invalid JSON: {e}"}
 
     if isinstance(data, list) and len(data) > 0 and all(isinstance(x, dict) for x in data):
-        # list-of-records: treat like a table
         all_keys = []
         for row in data:
             for k in row.keys():

@@ -1,13 +1,8 @@
-"""Stage 4 — ADaM derivation. Pure pandas. Explicit, auditable, no model."""
 import pandas as pd
 
 DATA_CUTOFF = pd.Timestamp("2024-06-01")
 
-# ── Provenance: one entry per derived column, co-located with the code ────────
-# These are read by _derive_clinical() in app.py. If you change any derivation
-# logic above, update the matching entry here so the provenance panel stays true.
 PIPELINE_PROVENANCE = {
-    # ── ADSL ──────────────────────────────────────────────────────────────────
     "adsl.USUBJID": {
         "source": "dm.USUBJID",
         "transform": "direct copy",
@@ -43,7 +38,6 @@ PIPELINE_PROVENANCE = {
         "transform": "'Y' if TRTSDT is not null (subject received at least one dose), else 'N'",
         "confidence": 1.00,
     },
-    # ── ADAE ──────────────────────────────────────────────────────────────────
     "adae.TRTEMFL": {
         "source": "ae.AESTDTC vs adsl.TRTSDT and adsl.TRTEDTM",
         "transform": (
@@ -57,7 +51,6 @@ PIPELINE_PROVENANCE = {
         "transform": "direct copy — NCI-CTCAE toxicity grade (numeric string)",
         "confidence": 1.00,
     },
-    # ── ADTTE ─────────────────────────────────────────────────────────────────
     "adtte.CNSR": {
         "source": "adsl.DTHDT",
         "transform": "0 if DTHDT is not null (death observed = event), 1 if null (censored)",
@@ -95,7 +88,6 @@ def derive_adsl(dm: pd.DataFrame, ex: pd.DataFrame, ds: pd.DataFrame) -> pd.Data
     death = ds[ds["DSDECOD"] == "DEATH"][["USUBJID", "DSDTC"]].rename(columns={"DSDTC": "DTHDT"})
     adsl = adsl.merge(death, on="USUBJID", how="left")
 
-    # last known alive / contact date for censoring (ALIVE disposition rows)
     alive = ds[ds["DSDECOD"] == "ALIVE"][["USUBJID", "DSDTC"]].rename(columns={"DSDTC": "LSTALVDT"})
     adsl = adsl.merge(alive, on="USUBJID", how="left")
 
@@ -131,10 +123,8 @@ def derive_adtte(adsl: pd.DataFrame) -> pd.DataFrame:
     adtte["DTHDT"] = pd.to_datetime(adtte["DTHDT"])
     adtte["LSTALVDT"] = pd.to_datetime(adtte["LSTALVDT"])
 
-    # CNSR: 0 = event (death observed), 1 = censored
     adtte["CNSR"] = adtte["DTHDT"].isna().astype(int)
 
-    # event/censor date: death date if known, else last known alive date, else cutoff
     adtte["EVENT_DT"] = adtte["DTHDT"]
     adtte["EVENT_DT"] = adtte["EVENT_DT"].fillna(adtte["LSTALVDT"])
     adtte["EVENT_DT"] = adtte["EVENT_DT"].fillna(DATA_CUTOFF)

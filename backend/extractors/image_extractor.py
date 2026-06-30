@@ -1,8 +1,3 @@
-"""
-Image extractor. Real OCR via pytesseract (Tesseract engine).
-Used for scanned protocol pages, photographed lab notebooks, or
-photographed plate maps where no digital file exists.
-"""
 import io
 from PIL import Image
 import pytesseract
@@ -15,7 +10,6 @@ def extract_image(content: bytes, filename: str) -> dict:
         return {"status": "error", "filename": filename, "error": f"Failed to open image: {e}"}
 
     try:
-        # convert to grayscale for more reliable OCR on photographs/scans
         gray = img.convert("L")
         text = pytesseract.image_to_string(gray)
     except Exception as e:

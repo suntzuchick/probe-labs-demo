@@ -1,15 +1,3 @@
-"""
-Probe extraction agent. Single entry point: takes (filename, bytes),
-detects real format via magic bytes, dispatches to the matching
-real parser, returns a structured ExtractionResult.
-
-This is the one place in the pipeline where ambiguous, messy input
-becomes structured candidate output -- the agent's job, same shape
-as the harness design's LLM containment boundary, except here the
-"agent" is a deterministic dispatcher + per-format parser, not a
-model call. (A model-backed classifier can be swapped in behind the
-same interface later without changing anything downstream.)
-"""
 import hashlib
 import time
 

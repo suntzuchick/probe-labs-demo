@@ -1,24 +1,6 @@
-"""
-Contextual derivation dispatcher for Probe.
-
-Classifies uploaded data by scoring column-level SDTM mappings against
-known variable groups, then inspects actual DataFrame structure to detect
-more specific scientific data types when no domain-level match is found.
-
-Contexts
---------
-clinical_trial      -> ADSL, ADAE, ADTTE          (delegates to derive_adam)
-lab_assay           -> LB_SUMMARY, LB_FLAGS, LB_SHIFTS
-plate_assay         -> PLATE_ASSAY, PLATE_QC, DOSE_RESPONSE
-time_series         -> TIME_INDEX, TREND_SUMMARY
-expression_matrix   -> FEATURE_VARIANCE, SAMPLE_STATS, TOP_VARIABLE
-grouped_comparison  -> GROUP_STATS, EFFECT_SIZES, ANOVA_SUMMARY
-generic             -> PROFILE, NUMERIC_SUMMARY   (true fallback)
-"""
 import numpy as np
 import pandas as pd
 
-# ── Variable group membership ─────────────────────────────────────────────────
 
 CLINICAL_VARS = {
     "USUBJID", "AGE", "SEX", "RACE", "ARMCD", "KRASMUT", "ECOGBL",
@@ -29,7 +11,6 @@ CLINICAL_VARS = {
 LAB_VARS = {"LBTEST", "LBORRES", "LBORRESU", "LBSTNRLO", "LBSTNRHI"}
 PLATE_VARS = {"WELLID", "PLATEID", "SAMPLEID", "CONCENTRATION", "READOUT"}
 
-# ── Context catalogue ─────────────────────────────────────────────────────────
 
 CONTEXTS = {
     "clinical_trial": {
@@ -117,7 +98,6 @@ CONTEXTS = {
     },
 }
 
-# ── DataFrame-content detection ───────────────────────────────────────────────
 
 _TIME_KEYWORDS = {
     "date", "time", "day", "week", "month", "year", "hour",
@@ -126,12 +106,10 @@ _TIME_KEYWORDS = {
 
 
 def _detect_sub_context(dfs: dict) -> str:
-    """Inspect actual DataFrame content to refine a generic classification."""
     for df in dfs.values():
         cols_lower = [c.lower() for c in df.columns]
         num_cols = df.select_dtypes(include="number").columns.tolist()
 
-        # Time series: has a column whose name contains a temporal keyword
         time_col = next(
             (df.columns[i] for i, cl in enumerate(cols_lower)
              if any(kw in cl for kw in _TIME_KEYWORDS)),
@@ -140,11 +118,9 @@ def _detect_sub_context(dfs: dict) -> str:
         if time_col is not None and len(num_cols) >= 1:
             return "time_series"
 
-        # Expression matrix: ≥8 columns, ≥70% numeric
         if len(df.columns) >= 8 and len(num_cols) / len(df.columns) >= 0.70:
             return "expression_matrix"
 
-        # Grouped comparison: ≥1 low-cardinality categorical + ≥2 numeric
         cat_cols = [
             c for c in df.columns
             if df[c].dtype == object and 1 < df[c].nunique() <= 12
@@ -156,8 +132,6 @@ def _detect_sub_context(dfs: dict) -> str:
 
 
 def _customize_plan(context: str, dfs: dict) -> dict:
-    """Return a copy of CONTEXTS[context] with descriptions and step labels
-    personalised to the actual column names and dimensions of the data."""
     meta = {**CONTEXTS[context], "steps": [dict(s) for s in CONTEXTS[context]["steps"]]}
 
     for df in dfs.values():
@@ -231,13 +205,8 @@ def _customize_plan(context: str, dfs: dict) -> dict:
 
     return meta
 
-# ── Context classification ────────────────────────────────────────────────────
 
 def classify_context(sess: dict, dfs: dict = None) -> str:
-    """
-    Infer data context from confirmed domains first, then from auto-mapped
-    variable scores, then (if dfs are provided) from actual DataFrame structure.
-    """
     confirmed = set(sess.get("domain_data", {}).keys())
 
     if confirmed & {"DM", "EX", "AE", "RS", "DS"}:
@@ -268,7 +237,6 @@ def classify_context(sess: dict, dfs: dict = None) -> str:
     if scores[best] > 0:
         return best
 
-    # No domain-level signal — inspect the actual loaded data
     if dfs:
         return _detect_sub_context(dfs)
     return "generic"
@@ -289,18 +257,12 @@ def get_plan(sess: dict, dfs: dict = None) -> dict:
 
 
 def auto_detect_domain(extraction_result: dict) -> str | None:
-    """
-    Guess the domain key for a single extracted file based on its
-    high-confidence column mappings. Returns None if nothing scores well.
-    For XLSX workbooks, aggregates mappings across all sheets.
-    """
     if extraction_result.get("status") != "ok":
         return None
 
     if extraction_result.get("detected_layout") == "plate_map":
         return "PLATE"
 
-    # XLSX: gather all sheet-level mappings and check for plate sheets
     sheets = extraction_result.get("sheets", [])
     if sheets:
         for sheet in sheets:
@@ -313,7 +275,7 @@ def auto_detect_domain(extraction_result: dict) -> str | None:
     auto_vars = {m["top_match"] for m in all_mappings if m.get("action") == "AUTO_MAP"}
 
     if not auto_vars:
-        return "DATA"  # file extracted OK but no column mapped confidently
+        return "DATA"
 
     lab_score      = len(auto_vars & LAB_VARS)
     plate_score    = len(auto_vars & PLATE_VARS)
@@ -324,7 +286,6 @@ def auto_detect_domain(extraction_result: dict) -> str | None:
     if plate_score >= 2 and plate_score >= clinical_score:
         return "PLATE"
 
-    # Clinical: try to identify the specific SDTM domain
     if {"USUBJID", "AGE", "SEX"} & auto_vars and "ARMCD" in auto_vars:
         return "DM"
     if {"EXSTDTC", "EXTRT"} & auto_vars:
@@ -336,22 +297,16 @@ def auto_detect_domain(extraction_result: dict) -> str | None:
     if "DSDECOD" in auto_vars:
         return "DS"
 
-    # Generic fallback if at least something mapped
     return "DATA"
 
 
-# ── Shared helper ─────────────────────────────────────────────────────────────
-
 def _col(df: pd.DataFrame, candidates: list) -> str | None:
-    """Return the first matching column name (case-insensitive)."""
     upper = {c.upper(): c for c in df.columns}
     for name in candidates:
         if name.upper() in upper:
             return upper[name.upper()]
     return None
 
-
-# ── Lab assay pipelines ───────────────────────────────────────────────────────
 
 def derive_lb_summary(lb: pd.DataFrame) -> pd.DataFrame:
     result_col = _col(lb, ["LBORRES", "RESULT", "VALUE", "MEASURED_VALUE"])
@@ -457,8 +412,6 @@ def derive_lb_shifts(lb: pd.DataFrame) -> pd.DataFrame:
     return shifts.drop(columns=["_num", "_time", "_is_bl"]).reset_index(drop=True)
 
 
-# ── Plate assay pipelines ─────────────────────────────────────────────────────
-
 def derive_plate_qc(df: pd.DataFrame) -> pd.DataFrame:
     plate_col   = _col(df, ["PLATEID", "PLATE_ID", "PLATE_BARCODE"])
     readout_col = _col(df, ["READOUT", "SIGNAL", "OD", "RLU", "FLUORESCENCE", "ABSORBANCE"])
@@ -521,8 +474,6 @@ def derive_dose_response(df: pd.DataFrame) -> pd.DataFrame:
     return dr.reset_index(drop=True)
 
 
-# ── Generic pipelines ─────────────────────────────────────────────────────────
-
 def derive_profile(dfs: dict) -> pd.DataFrame:
     rows = []
     for var, df in dfs.items():
@@ -551,10 +502,7 @@ def derive_numeric_summary(dfs: dict) -> pd.DataFrame:
     return pd.concat(frames)
 
 
-# ── Time-series pipelines ─────────────────────────────────────────────────────
-
 def derive_time_index(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
-    """Sort by time column and compute inter-observation delta."""
     df = df.copy()
     parsed = pd.to_datetime(df[time_col], errors="coerce")
     if parsed.notna().mean() > 0.5:
@@ -570,10 +518,9 @@ def derive_time_index(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
 
 
 def derive_trend_summary(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
-    """Linear slope and R² per numeric variable vs time."""
     parsed = pd.to_datetime(df[time_col], errors="coerce")
     if parsed.notna().mean() > 0.5:
-        time_vals = parsed.astype("int64") // 10 ** 9  # seconds since epoch
+        time_vals = parsed.astype("int64") // 10 ** 9
     else:
         time_vals = pd.to_numeric(df[time_col], errors="coerce")
 
@@ -605,10 +552,7 @@ def derive_trend_summary(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("r_squared", ascending=False).reset_index(drop=True)
 
 
-# ── Expression / feature-matrix pipelines ────────────────────────────────────
-
 def derive_feature_variance(df: pd.DataFrame) -> pd.DataFrame:
-    """Variance, mean, and CV% per feature. Handles wide (rows=features) format."""
     num_cols = df.select_dtypes(include="number").columns.tolist()
     if not num_cols:
         return pd.DataFrame({"message": ["No numeric columns found."]})
@@ -616,7 +560,6 @@ def derive_feature_variance(df: pd.DataFrame) -> pd.DataFrame:
     id_col = next((c for c in df.columns if c not in num_cols), None)
 
     if id_col:
-        # Wide format: each row is a feature; numeric columns are samples
         data = df[num_cols].apply(pd.to_numeric, errors="coerce")
         result = pd.DataFrame({"feature": df[id_col].astype(str)})
         result["variance"]  = data.var(axis=1).round(4)
@@ -627,7 +570,6 @@ def derive_feature_variance(df: pd.DataFrame) -> pd.DataFrame:
         result["n_samples"] = data.notna().sum(axis=1)
         return result.sort_values("variance", ascending=False).reset_index(drop=True)
     else:
-        # Tall format: each column is a feature
         rows = []
         for c in num_cols:
             vals = pd.to_numeric(df[c], errors="coerce").dropna()
@@ -643,7 +585,6 @@ def derive_feature_variance(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def derive_sample_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Per-sample (column) summary statistics for an expression/feature matrix."""
     num_cols = df.select_dtypes(include="number").columns.tolist()
     rows = []
     for c in num_cols:
@@ -660,14 +601,10 @@ def derive_sample_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def derive_top_variable(df: pd.DataFrame, n: int = 50) -> pd.DataFrame:
-    """Top N features by variance from derive_feature_variance output."""
     return derive_feature_variance(df).head(n)
 
 
-# ── Grouped-comparison pipelines ──────────────────────────────────────────────
-
 def _pick_group_cols(df: pd.DataFrame):
-    """Return (group_col, num_cols) from a DataFrame."""
     cat_cols = [c for c in df.columns if df[c].dtype == object and 1 < df[c].nunique() <= 12]
     num_cols = df.select_dtypes(include="number").columns.tolist()
     group_col = cat_cols[0] if cat_cols else None
@@ -675,7 +612,6 @@ def _pick_group_cols(df: pd.DataFrame):
 
 
 def derive_group_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Mean, SD, median, and N per group per numeric measurement."""
     group_col, num_cols = _pick_group_cols(df)
     if not group_col or not num_cols:
         return pd.DataFrame({"message": ["Group column or numeric measurements not detected."]})
@@ -698,7 +634,6 @@ def derive_group_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def derive_effect_sizes(df: pd.DataFrame) -> pd.DataFrame:
-    """Cohen's d between every pair of groups for each measurement."""
     group_col, num_cols = _pick_group_cols(df)
     if not group_col or not num_cols:
         return pd.DataFrame({"message": ["Group column or numeric measurements not detected."]})
@@ -729,8 +664,7 @@ def derive_effect_sizes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def derive_anova(df: pd.DataFrame) -> pd.DataFrame:
-    """One-way ANOVA F-statistic and p-value for each measurement."""
-    from scipy import stats as _scipy_stats  # type: ignore
+    from scipy import stats as _scipy_stats
     group_col, num_cols = _pick_group_cols(df)
     if not group_col or not num_cols:
         return pd.DataFrame({"message": ["Group column or numeric measurements not detected."]})

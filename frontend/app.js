@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // API base: empty string = same origin (works on Render); fallback for file:// dev
+
   var API = window.location.protocol === "file:" ? "http://localhost:5050" : "";
   var sessionId = null;
   var REQUIRED_DOMAINS = ["DM", "EX", "AE", "RS", "DS"];
@@ -10,23 +10,23 @@
   var _provenanceMeta = null;
   var _notebookVars = [];
 
-  // ── Auth token management ──────────────────────────────────────────────────
+
   var _probeToken = null;
 
-  // If arriving via magic link redirect: ?probe_token=XXX
+
   (function () {
     var params = new URLSearchParams(window.location.search);
     var urlToken = params.get("probe_token");
     if (urlToken) {
       localStorage.setItem("probe_token", urlToken);
-      // Remove the token from the visible URL immediately
+
       var clean = window.location.pathname + window.location.hash;
       window.history.replaceState({}, document.title, clean);
     }
     _probeToken = localStorage.getItem("probe_token");
   })();
 
-  // Intercept all API fetches: inject X-Probe-Token and handle 401 globally
+
   (function () {
     var _origFetch = window.fetch.bind(window);
     window.fetch = function (url, opts) {
@@ -46,7 +46,6 @@
     };
   })();
 
-  // ── Auth overlay ───────────────────────────────────────────────────────────
 
   function showAuthOverlay() {
     document.getElementById("auth-overlay").style.display = "flex";
@@ -67,23 +66,23 @@
       });
       var data = await res.json();
       if (!data.authenticated && data.email === "") {
-        // Auth is enabled but we're not authenticated
+
         showAuthOverlay();
         return false;
       }
       if (data.authenticated && data.email) {
-        // Show the logged-in user in the masthead
+
         var mu = document.getElementById("masthead-user");
         if (mu && !mu.textContent) mu.textContent = data.email;
       }
       return true;
     } catch (e) {
-      // Can't reach server or auth not configured — proceed
+
       return true;
     }
   }
 
-  // Auth form: request magic link
+
   var authForm = document.getElementById("auth-form");
   if (authForm) {
     authForm.addEventListener("submit", async function (e) {
@@ -151,7 +150,7 @@
     });
   }
 
-  // ------------- screen nav -------------
+
   var screens = ["screen-0", "screen-1", "screen-2", "screen-3", "screen-4", "screen-5"];
   var railStages = document.querySelectorAll(".rail-stage");
 
@@ -175,7 +174,7 @@
     if (el) el.textContent = text;
   }
 
-  // Logout button — only shown when auth is active
+
   var logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async function () {
@@ -186,10 +185,10 @@
     });
   }
 
-  // ── Bootstrap: check auth before anything else ─────────────────────────────
+
   checkAuth().then(function (ok) {
     if (ok) {
-      // Show logout button only when auth is actually enabled
+
       fetch(API + "/api/auth/status").then(function (r) {
         return r.json();
       }).then(function (d) {
@@ -198,7 +197,7 @@
     }
   });
 
-  // ------------- screen 0: info gate -------------
+
   document.getElementById("info-form").addEventListener("submit", async function (e) {
     e.preventDefault();
     var name    = document.getElementById("info-name").value.trim();
@@ -239,7 +238,7 @@
     }
   });
 
-  // ------------- session -------------
+
   async function ensureSession() {
     if (sessionId) return sessionId;
     var res = await fetch(API + "/api/session", { method: "POST" });
@@ -249,7 +248,7 @@
     return sessionId;
   }
 
-  // ------------- screen 1: ingest -------------
+
   var dropzone = document.getElementById("dropzone");
   var fileInput = document.getElementById("file-input");
 
@@ -320,7 +319,7 @@
     runTerminalScreen();
   });
 
-  // ------------- screen 2: extraction terminal -------------
+
   var terminalStarted = false;
 
   function runTerminalScreen() {
@@ -364,7 +363,7 @@
     runQualityScreen();
   });
 
-  // ------------- screen 3: data quality -------------
+
   var qualityRan = false;
   var _qualityIssues = [];
 
@@ -446,14 +445,14 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId, fixes: selected }),
         });
-      } catch (e) { /* non-fatal */ }
+      } catch (e) {  }
     }
 
     goTo("screen-4", 4);
     runDerivationScreen();
   });
 
-  // ------------- screen 4: derivation -------------
+
   var derivationRan = false;
   var _derivePlan = null;
 
@@ -461,15 +460,15 @@
     if (derivationRan) return;
     derivationRan = true;
 
-    // 1. Fetch the context-aware plan
+
     var planRes = await fetch(API + "/api/derive/plan?session_id=" + encodeURIComponent(sessionId));
     _derivePlan = await planRes.json();
 
-    // 2. Update context badge + description
+
     document.getElementById("context-badge").textContent = _derivePlan.context_label;
     document.getElementById("derive-desc").textContent = _derivePlan.description;
 
-    // 3. Render steps from the plan
+
     var track = document.getElementById("run-track");
     track.innerHTML = "";
     _derivePlan.steps.forEach(function (step) {
@@ -485,7 +484,7 @@
       track.appendChild(el);
     });
 
-    // 4. Animate steps while derivation runs
+
     var stepKeys = _derivePlan.steps.map(function (s) { return s.key; });
     var idx = 0;
     function advance() {
@@ -502,7 +501,7 @@
     }
     advance();
 
-    // 5. Run derivation
+
     var res = await fetch(API + "/api/derive", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId }),
@@ -580,7 +579,7 @@
 
   document.getElementById("btn-back-2").addEventListener("click", function () { goTo("screen-2", 2); });
   document.getElementById("btn-back-3").addEventListener("click", function () { goTo("screen-3", 3); });
-  // Context-specific templates for each data type
+
   var NOTEBOOK_TEMPLATES = {
     clinical_trial: [
       { label: "demographics by arm",
@@ -733,31 +732,31 @@
 
       _notebookVars = vars;
 
-      // Update var list
+
       var varEl = document.getElementById("var-list");
       if (varEl) varEl.textContent = vars.length ? vars.join(", ") : "none yet";
 
-      // Update placeholder + hint based on context
+
       var inp = document.getElementById("generative-input");
       if (inp) inp.placeholder = NOTEBOOK_PLACEHOLDERS[context] || NOTEBOOK_PLACEHOLDERS.generic;
       var hint = document.getElementById("generative-hint");
       if (hint) hint.textContent = NOTEBOOK_HINTS[context] || NOTEBOOK_HINTS.generic;
 
-      // Render context-appropriate template chips and suggestions
+
       renderNotebookTemplates(context);
       renderSuggestions(context);
 
-      // Update rail meta
+
       setRailMeta(4, contextLabel + " \u00b7 " + vars.length + " vars");
     } catch (e) {
-      // non-fatal; notebook still works without context refresh
+
     }
 
-    // Fetch provenance metadata for notebook cell footers (non-fatal)
+
     try {
       var provRes = await fetch(API + "/api/session/" + encodeURIComponent(sessionId) + "/provenance");
       _provenanceMeta = await provRes.json();
-    } catch (e) { /* non-fatal */ }
+    } catch (e) {  }
   }
 
   document.getElementById("btn-to-notebook").addEventListener("click", function () {
@@ -785,7 +784,7 @@
     });
   });
 
-  // ------------- screen 5: notebook -------------
+
   document.getElementById("add-cell-btn").addEventListener("click", function () { addCell(""); });
 
   document.getElementById("export-btn").addEventListener("click", async function () {
@@ -801,7 +800,7 @@
       a.href = URL.createObjectURL(blob);
       a.download = "probe_export_" + sessionId.slice(0,8) + ".xlsx";
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch (e) { /* non-fatal */ }
+    } catch (e) {  }
     btn.disabled = false;
     btn.textContent = "Export dataset ↓";
   });
@@ -847,8 +846,8 @@
   }
 
   function _stripComments(code) {
-    // Remove standalone comment lines (lines that are only a # comment, including blank comment lines).
-    // Inline comments after real code are preserved so things like list comprehensions stay readable.
+
+
     return code
       .split("\n")
       .filter(function (line) { return !/^\s*#/.test(line); })
@@ -882,7 +881,7 @@
                         || schemaVerified.length || schemaMissing.length;
     if (!hasAnyContent) return;
 
-    // Detect which derived/raw variable names the code mentions
+
     var mentionedVars = [];
     _notebookVars.forEach(function (v) {
       var re = new RegExp("\\b" + v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
@@ -890,7 +889,7 @@
         mentionedVars.push(v);
       }
     });
-    // Also check variable names implicit in origins keys (e.g. "plate_assay" from "plate_assay.SIGNAL")
+
     Object.keys(origins).forEach(function (key) {
       var v = key.split(".")[0];
       var re = new RegExp("\\b" + v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
@@ -899,12 +898,12 @@
       }
     });
 
-    // Relevant origin entries for mentioned vars
+
     var relevantOrigins = Object.keys(origins).filter(function (key) {
       return mentionedVars.indexOf(key.split(".")[0]) !== -1;
     });
 
-    // Relevant flags
+
     var relevantLowConf = lowConf.filter(function (k) {
       return mentionedVars.indexOf(k.split(".")[0]) !== -1;
     });
@@ -912,7 +911,7 @@
       return mentionedVars.indexOf(h.var) !== -1 || code.indexOf(h.var) !== -1;
     });
 
-    // Also look up raw extraction origins for mentioned vars that aren't in derivation origins
+
     var relevantRawOrigins = Object.keys(rawOrigins).filter(function (key) {
       return mentionedVars.indexOf(key.split(".")[0]) !== -1
           && !relevantOrigins.includes(key);
@@ -936,7 +935,7 @@
     panels.className = "prov-panels";
     panels.hidden = true;
 
-    // Panel 1: Derivation origins (from derive_adam.PIPELINE_PROVENANCE or equivalent)
+
     if (relevantOrigins.length) {
       var origPanel = document.createElement("div");
       var origTitle = document.createElement("div");
@@ -958,7 +957,7 @@
       panels.appendChild(origPanel);
     }
 
-    // Panel 2: Extraction origins (raw domain → source file mapping from sdtm_mapping.py)
+
     if (relevantRawOrigins.length) {
       var rawPanel = document.createElement("div");
       var rawTitle = document.createElement("div");
@@ -979,7 +978,7 @@
       panels.appendChild(rawPanel);
     }
 
-    // Panel 3: Schema verification — column references checked against actual loaded data
+
     if (schemaVerified.length || schemaMissing.length) {
       var schemaPanel = document.createElement("div");
       var schemaTitle = document.createElement("div");
@@ -1002,7 +1001,7 @@
       panels.appendChild(schemaPanel);
     }
 
-    // Panel 4: Flags (low confidence + held for review)
+
     if (hasFlags) {
       var flagPanel = document.createElement("div");
       var flagTitle = document.createElement("div");
@@ -1026,7 +1025,7 @@
       panels.appendChild(flagPanel);
     }
 
-    // Panel 5: Derivation recipe
+
     if (dm.recipe) {
       var recipePanel = document.createElement("div");
       var recipeTitle = document.createElement("div");
@@ -1140,7 +1139,6 @@
     generativeInput.value = "";
     generativeInput.focus();
   }
-
 
 
   function autoGrow(textarea) {

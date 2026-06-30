@@ -1,35 +1,15 @@
-"""
-Magic-link authentication for Probe demo.
-
-Flow
-────
-1. POST /api/auth/request  — email checked against ALLOWED_EMAILS env var;
-                             one-time token generated and emailed
-2. GET  /api/auth/verify   — token validated, burned, session token returned
-                             via redirect to /?probe_token=SESSION_TOKEN
-3. All /api/* calls carry X-Probe-Token header; before_request validates it
-4. GET  /api/auth/status   — lightweight ping to confirm session is alive
-5. POST /api/auth/logout   — revoke session token
-
-Tokens are kept in-memory — fine for a single-process demo; all sessions
-expire on restart and users just click a new link.
-
-Auth is completely disabled when ALLOWED_EMAILS env var is unset (dev mode).
-"""
 import os
 import secrets
 import threading
 import time
 
 _lock = threading.Lock()
-_magic_tokens: dict = {}   # token → {email, created_at, used}
-_sessions:     dict = {}   # token → {email, created_at}
+_magic_tokens: dict = {}
+_sessions:     dict = {}
 
-MAGIC_EXPIRY   = 7 * 24 * 3600  # 7 days
-SESSION_EXPIRY = 7 * 24 * 3600  # 7 days
+MAGIC_EXPIRY   = 7 * 24 * 3600
+SESSION_EXPIRY = 7 * 24 * 3600
 
-
-# ── Allowlist ──────────────────────────────────────────────────────────────────
 
 def allowed_emails() -> set:
     raw = os.environ.get("ALLOWED_EMAILS", "")
@@ -44,8 +24,6 @@ def auth_enabled() -> bool:
     return bool(os.environ.get("ALLOWED_EMAILS", "").strip())
 
 
-# ── Magic token lifecycle ──────────────────────────────────────────────────────
-
 def create_magic_token(email: str) -> str:
     token = secrets.token_urlsafe(32)
     with _lock:
@@ -58,10 +36,6 @@ def create_magic_token(email: str) -> str:
 
 
 def verify_magic_token(token: str) -> str | None:
-    """
-    Validates a magic token. If valid and unused, burns it and
-    returns a new long-lived session token. Returns None on failure.
-    """
     with _lock:
         entry = _magic_tokens.get(token)
         if not entry or entry["used"]:
@@ -80,10 +54,7 @@ def verify_magic_token(token: str) -> str | None:
     return session_token
 
 
-# ── Session validation ─────────────────────────────────────────────────────────
-
 def validate_session(token: str) -> str | None:
-    """Returns the email for a live session, or None."""
     if not token:
         return None
     with _lock:
@@ -101,15 +72,7 @@ def revoke_session(token: str) -> None:
         _sessions.pop(token, None)
 
 
-# ── Email delivery ─────────────────────────────────────────────────────────────
-
 def send_magic_link(email: str, token: str) -> bool:
-    """
-    Send the magic link email via SMTP.
-    Required env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, APP_BASE_URL.
-    Optional:          SMTP_FROM  (defaults to SMTP_USER).
-    Returns True on success.
-    """
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText

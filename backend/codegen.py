@@ -1,22 +1,3 @@
-"""
-Bioinformatics-aware code generation for the Probe notebook.
-
-The model receives a richly interpreted context that includes:
-  - Detected scientific context (clinical trial, plate assay, lab assay, generic)
-  - Schema with value intelligence: unique values for categorical columns,
-    numeric ranges, embedded-structure hints (e.g. 'RVM-1102_10.0uM')
-  - Biological interpretation: known cell lines, mutation nomenclature,
-    concentration series patterns, control well classifications, SDTM semantics
-  - Extraction provenance: column → standard variable mapping decisions + confidence
-  - Joinable variable relationships
-  - Recommended statistical models for the detected data type
-
-Synthetic data generation is explicitly supported: the model may create new
-DataFrames in memory (e.g. modified copies for sensitivity analysis, permutation
-tests, edge-case testing). File I/O and network calls remain forbidden.
-
-Requires ANTHROPIC_API_KEY in the environment.
-"""
 import os
 import re
 
@@ -72,9 +53,6 @@ You receive rich context about the data: schema, biological interpretation of ev
 """
 
 
-# ── Biological knowledge bases ─────────────────────────────────────────────────────────────────
-
-# Known cell lines → cancer type annotation
 _CELL_LINE_DB = {
     "panc-1": "pancreatic ductal adenocarcinoma (KRAS G12D)",
     "mia paca-2": "pancreatic ductal adenocarcinoma (KRAS G12C)",
@@ -96,23 +74,19 @@ _CELL_LINE_DB = {
     "jurkat": "T-cell leukaemia",
 }
 
-# Mutation patterns → biological meaning
 _MUTATION_PATTERN = re.compile(
-    r'\b([A-Z][0-9]+[A-Z])\b'   # e.g. G12D, V600E, R175H
+    r'\b([A-Z][0-9]+[A-Z])\b'
 )
 
-# Concentration unit patterns
 _CONC_UNIT_PATTERN = re.compile(
     r'(\d+\.?\d*)\s*(um|µm|nm|mm|pm)', re.IGNORECASE
 )
 
-# Viability range heuristic: if numeric column has values 0–200 and name suggests readout
 _VIABILITY_NAMES = re.compile(
     r'(viab|inhibit|growth|response|signal|readout|luminesc|fluores|absorb)',
     re.IGNORECASE
 )
 
-# SDTM variable meanings
 _SDTM_GLOSSARY = {
     "USUBJID": "unique subject identifier",
     "ARMCD":   "treatment arm code",
@@ -148,7 +122,6 @@ _RECOMMENDED_ANALYSES = {
     ),
 }
 
-# Columns whose values are always opaque identifiers — show count, not samples
 _ID_PATTERNS = re.compile(
     r"(subj|patient|mrn|nhs|dob|birth|ssn|email|phone)\b",
     re.IGNORECASE,
@@ -157,24 +130,18 @@ _ID_PATTERNS = re.compile(
 _CATEGORICAL_THRESHOLD = 20
 
 
-# ── Column value intelligence ──────────────────────────────────────────────────────────────────
-
 def _col_intelligence(df, col: str) -> str:
-    """Compact description of a column's values including biological interpretation."""
     series = df[col]
     n_unique = series.nunique(dropna=True)
     dtype = series.dtype
     parts = []
 
-    # ── Numeric ───────────────────────────────────────────────────────────────
     if pd.api.types.is_numeric_dtype(dtype):
         try:
             mn, mx, mu = float(series.min()), float(series.max()), float(series.mean())
             parts.append(f"range {mn:.4g}–{mx:.4g}, mean {mu:.4g}")
-            # Viability heuristic
             if _VIABILITY_NAMES.search(col) and 0 <= mu <= 200:
                 parts.append("likely viability % — 100=DMSO baseline, 0=complete inhibition")
-            # Log-spaced concentration heuristic
             if "conc" in col.lower() or "dose" in col.lower():
                 log_spread = mx / max(mn, 1e-9)
                 if log_spread > 100:
@@ -183,14 +150,12 @@ def _col_intelligence(df, col: str) -> str:
             pass
         return "; ".join(parts)
 
-    # ── Datetime ──────────────────────────────────────────────────────────────
     if pd.api.types.is_datetime64_any_dtype(dtype):
         try:
             return f"dates {series.min().date()} → {series.max().date()}"
         except Exception:
             return ""
 
-    # ── String / object ───────────────────────────────────────────────────────
     if n_unique == 0:
         return ""
 
@@ -201,7 +166,6 @@ def _col_intelligence(df, col: str) -> str:
         vals = sorted(series.dropna().astype(str).unique())
         desc = "values: [" + ", ".join(repr(v) for v in vals) + "]"
 
-        # Annotate known cell lines
         cl_annots = []
         for v in vals:
             key = v.lower().strip()
@@ -210,17 +174,14 @@ def _col_intelligence(df, col: str) -> str:
         if cl_annots:
             desc += f" — cell lines: {'; '.join(cl_annots)}"
 
-        # Annotate SDTM variable
         if col.upper() in _SDTM_GLOSSARY:
             desc += f" — SDTM: {_SDTM_GLOSSARY[col.upper()]}"
 
-        # Detect mutation notation
         all_text = " ".join(str(v) for v in vals)
         mutations = _MUTATION_PATTERN.findall(all_text)
         if mutations:
             desc += f" — oncogenic mutation notation detected ({', '.join(set(mutations))})"
 
-        # Detect control well labels
         lower_vals = {v.lower() for v in vals}
         if lower_vals & {"dmso", "vehicle", "untreated"}:
             desc += " — includes DMSO/vehicle control"
@@ -229,11 +190,9 @@ def _col_intelligence(df, col: str) -> str:
 
         return desc
 
-    # High cardinality
     samples = series.dropna().astype(str).head(50).drop_duplicates().tolist()[:3]
     desc = "samples: [" + ", ".join(repr(s) for s in samples) + f"] ({n_unique} unique)"
 
-    # Detect embedded concentration format
     sample_str = " ".join(samples)
     if _CONC_UNIT_PATTERN.search(sample_str):
         desc += " — encodes compound+concentration (e.g. 'NAME_10.0uM'); parse with str.extract()"
@@ -241,14 +200,11 @@ def _col_intelligence(df, col: str) -> str:
     return desc
 
 
-# ── Full context builder ───────────────────────────────────────────────────────────────────────
-
 def _build_context(session_dir: str, available_vars: list, sess: dict | None) -> str:
     import notebook_engine as ne
 
     lines = []
 
-    # ── Detected context + recommended analyses ───────────────────────────────
     context_key = "generic"
     if sess:
         try:
@@ -265,7 +221,6 @@ def _build_context(session_dir: str, available_vars: list, sess: dict | None) ->
         lines.append(_RECOMMENDED_ANALYSES[context_key])
     lines.append("")
 
-    # ── Variable classification ───────────────────────────────────────────────
     _DERIVED_NAMES = {
         "plate_assay", "plate_qc", "dose_response",
         "adsl", "adae", "adtte",
@@ -301,7 +256,6 @@ def _build_context(session_dir: str, available_vars: list, sess: dict | None) ->
             _render_var(v)
         lines.append("")
 
-    # ── Extraction provenance ─────────────────────────────────────────────────
     if sess:
         domain_source = sess.get("domain_source", {})
         prov = []
@@ -324,7 +278,6 @@ def _build_context(session_dir: str, available_vars: list, sess: dict | None) ->
             lines.extend(prov)
             lines.append("")
 
-    # ── Joinable keys ─────────────────────────────────────────────────────────
     shared: dict[str, list[str]] = {}
     for var, df in dfs.items():
         for col in df.columns:
@@ -339,11 +292,8 @@ def _build_context(session_dir: str, available_vars: list, sess: dict | None) ->
     return "\n".join(lines)
 
 
-# ── Public API ─────────────────────────────────────────────────────────────────────────────────
-
 def generate_code(session_dir: str, available_vars: list, request_text: str,
                   sess: dict | None = None) -> dict:
-    """Returns {"status": "ok", "code": "..."} or {"status": "error", "error": "..."}. Never raises."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return {"status": "error",
@@ -384,7 +334,6 @@ def generate_code(session_dir: str, available_vars: list, request_text: str,
 
     code = match.group(1).strip()
 
-    # Only block actual file I/O and shell access — not DataFrame construction
     forbidden = [
         "import os", "import sys", "import subprocess",
         "__import__", "open(", "exec(", "eval(",
@@ -398,27 +347,15 @@ def generate_code(session_dir: str, available_vars: list, request_text: str,
 
 
 def verify_against_schema(code: str, dfs: dict) -> dict:
-    """
-    Parse generated code for explicit column subscript accesses — var['COL'] and var["COL"] —
-    and check every reference against the columns that actually exist in the loaded DataFrames.
-
-    Returns:
-      verified  — references confirmed present in session data
-      missing   — references that look like DataFrame column accesses but the column
-                  does NOT exist in that variable (hallucinated or stale column names)
-      checked   — total references inspected
-    """
     known = {var: set(df.columns) for var, df in dfs.items()}
     verified_set: set[str] = set()
     missing_set:  set[str] = set()
 
-    # Match: identifier['anything'] or identifier["anything"]
-    # Captures the variable name and the string key separately.
     for m in re.finditer(r'\b(\w+)\s*\[[\'"]([^\'"]+)[\'"]\]', code):
         var = m.group(1)
         col = m.group(2).strip()
         if var not in known:
-            continue  # not a session DataFrame — ignore built-ins, dicts, etc.
+            continue
         ref = f"{var}.{col}"
         if col in known[var]:
             verified_set.add(ref)

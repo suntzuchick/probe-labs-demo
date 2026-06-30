@@ -1,11 +1,3 @@
-"""
-Session state for Probe. In-memory, per-process — fine for a demo,
-would move to Redis/DB for production. Each session tracks:
-  - uploaded files (raw extraction results)
-  - domain_data: auto-detected or user-confirmed domain -> dataframe records
-  - domain_source: provenance metadata per domain
-  - canvas_cells: generative notebook cell history
-"""
 import threading
 import time
 import uuid
@@ -21,11 +13,11 @@ def new_session() -> str:
     with _lock:
         _sessions[sid] = {
             "created_at": time.time(),
-            "user_info": {},      # name, organization, email, project
-            "files": {},          # filename -> extraction result
-            "domain_data": {},    # domain code -> dataframe records
-            "domain_source": {},  # domain code -> provenance dict
-            "derivation_meta": {},  # recipe + variable_origins written by _derive_*
+            "user_info": {},
+            "files": {},
+            "domain_data": {},
+            "domain_source": {},
+            "derivation_meta": {},
             "canvas_cells": [],
         }
     return sid
@@ -48,7 +40,6 @@ def update_session(sid: str, **kwargs):
 
 
 def missing_domains(sid: str) -> list:
-    """Returns missing clinical SDTM domains (only meaningful for clinical_trial context)."""
     sess = get_session(sid)
     if not sess:
         return CLINICAL_DOMAINS[:]
@@ -56,7 +47,6 @@ def missing_domains(sid: str) -> list:
 
 
 def has_any_data(sid: str) -> bool:
-    """True if the session has at least one domain or uploaded file."""
     sess = get_session(sid)
     if not sess:
         return False

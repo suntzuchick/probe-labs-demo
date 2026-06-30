@@ -1,7 +1,3 @@
-"""
-Tabular (CSV/TSV) extractor. Real pandas parsing -- no simulation.
-Detects plate-map layout vs long-format table and reshapes accordingly.
-"""
 import io
 import pandas as pd
 from sdtm_mapping import map_columns, is_plate_layout
@@ -57,8 +53,6 @@ def extract_csv(content: bytes, filename: str, sep: str = ",") -> dict:
 
 
 def _reshape_plate(df: pd.DataFrame) -> pd.DataFrame:
-    """Reshape a wide plate-grid (rows=A-H/A-P, cols=1-12/1-24) into
-    long format: one record per well with WELLID, ROW, COL, READOUT."""
     row_col = df.columns[0]
     records = []
     for _, row in df.iterrows():

@@ -1,26 +1,3 @@
-"""
-Notebook execution engine for Probe.
-
-Each session gets a persistent kernel subprocess (kernel_runner.py) that
-keeps heavy imports (pandas, numpy, matplotlib, lifelines) loaded in memory.
-The first cell run for a session pays the ~20s startup cost once; subsequent
-cells execute in ~1s or less.
-
-Cell execution protocol:
-  1. Send JSON line to kernel stdin: {"session_dir": "...", "code": "..."}
-  2. Kernel loads any persisted dataframes from disk into its namespace
-  3. Kernel executes the cell and captures stdout / matplotlib figures
-  4. Kernel persists any changed KNOWN_VARS back to disk
-  5. Kernel writes JSON result between sentinel lines on stdout
-
-State is kept both in the kernel's in-memory namespace (fast path) and as
-pickle files on disk (so it survives kernel restarts and is accessible to
-save_state / load_state helpers called by app.py).
-
-This is real Python execution with no sandbox against malicious code —
-appropriate for a local single-tenant demo, not for untrusted multi-tenant
-production. That tradeoff is intentional.
-"""
 import json
 import os
 import pickle
@@ -34,7 +11,6 @@ KERNEL_STARTUP_TIMEOUT = 60
 
 _RUNNER = os.path.join(os.path.dirname(__file__), "kernel_runner.py")
 
-# session_dir -> {"proc": Popen, "lock": Lock}
 _kernels: dict[str, dict] = {}
 _kernels_lock = threading.Lock()
 
@@ -48,7 +24,6 @@ def _start_kernel() -> dict:
         text=True,
         bufsize=1,
     )
-    # Block until kernel signals imports are done
     import time
     t0 = time.monotonic()
     while True:
@@ -113,7 +88,6 @@ def run_cell(session_dir: str, code: str) -> dict:
             proc.stdin.write(request_line)
             proc.stdin.flush()
         except BrokenPipeError:
-            # Kernel died; get a fresh one and retry
             with _kernels_lock:
                 _kernels.pop(session_dir, None)
             entry = _get_kernel(session_dir)

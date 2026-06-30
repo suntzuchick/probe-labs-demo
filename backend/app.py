@@ -1,16 +1,3 @@
-"""
-Probe backend v2. Flask app exposing:
-
-  POST /api/session                    -> create a new session
-  POST /api/upload                     -> real extraction; returns result + trace log
-  POST /api/load-sample                -> load bundled RASolute sample (real extraction path)
-  POST /api/confirm-mapping            -> human confirms a domain assignment
-  GET  /api/session/<sid>/status        -> domain completeness
-  GET  /api/derive/plan                 -> context-aware derivation plan for the session
-  POST /api/derive                      -> contextual derivation, saved into notebook state
-  POST /api/notebook/run                -> execute a real notebook cell against session state
-  GET  /api/session/<sid>/notebook       -> list all cells run so far
-"""
 import io
 import os
 import re
@@ -39,27 +26,22 @@ app = Flask(__name__)
 CORS(app, expose_headers=["X-Probe-Token"])
 
 
-# ── Auth middleware ────────────────────────────────────────────────────────────
-
 def _session_token_from_request():
     return request.headers.get("X-Probe-Token") or request.args.get("probe_token")
 
 
 @app.before_request
 def enforce_auth():
-    """Protect all /api/ routes when ALLOWED_EMAILS is configured."""
     if not _auth.auth_enabled():
-        return  # dev mode — no auth required
+        return
     if not request.path.startswith("/api/"):
-        return  # static files are public; auth happens client-side
+        return
     if request.path.startswith("/api/auth/"):
-        return  # auth endpoints are always public
+        return
     token = _session_token_from_request()
     if not _auth.validate_session(token or ""):
         return jsonify({"error": "unauthorized", "code": "auth_required"}), 401
 
-
-# ── Frontend static serving ────────────────────────────────────────────────────
 
 @app.route("/")
 def serve_index():
@@ -71,8 +53,6 @@ def serve_static(filename):
     return send_from_directory(FRONTEND_DIR, filename)
 
 
-# ── Auth endpoints ─────────────────────────────────────────────────────────────
-
 @app.route("/api/auth/request", methods=["POST"])
 def auth_request_link():
     body  = request.get_json(force=True)
@@ -81,7 +61,7 @@ def auth_request_link():
         return jsonify({"error": "A valid email address is required."}), 400
 
     if not _auth.auth_enabled():
-        return jsonify({"status": "sent"})  # dev mode — always succeed
+        return jsonify({"status": "sent"})
 
     if not _auth.is_allowed(email):
         return jsonify({"status": "not_allowed"})
@@ -137,12 +117,6 @@ def _slug(name: str) -> str:
 
 
 def _auto_save_domain(sid: str, filename: str, content: bytes, extraction_result: dict):
-    """
-    Save uploaded data to notebook state without requiring confirm-mapping.
-    XLSX workbooks: each sheet becomes its own named variable.
-    CSV/TSV: domain is detected from column mappings; variable name is the
-    domain code (e.g. 'lb') or a filename slug for unrecognised data.
-    """
     fmt = extraction_result.get("detected_format", "")
     sdir = _session_dir(sid)
     os.makedirs(sdir, exist_ok=True)
@@ -152,7 +126,6 @@ def _auto_save_domain(sid: str, filename: str, content: bytes, extraction_result
         _save_xlsx_sheets(filename, content, extraction_result, sdir, sess)
         return
 
-    # Single-sheet path (CSV / TSV / other tabular)
     domain = derive_contextual.auto_detect_domain(extraction_result)
     if not domain:
         return
@@ -181,8 +154,6 @@ def _auto_save_domain(sid: str, filename: str, content: bytes, extraction_result
 
 
 def _save_xlsx_sheets(filename, content, extraction_result, sdir, sess):
-    """Save each sheet of an XLSX workbook as its own notebook variable,
-    applying the same plate-reshape logic that the extractor already ran."""
     from sdtm_mapping import is_plate_layout
     from tabular import _reshape_plate
 
@@ -228,8 +199,6 @@ def _save_xlsx_sheets(filename, content, extraction_result, sdir, sess):
             continue
 
 
-# -------------------- session --------------------
-
 @app.route("/api/session", methods=["POST"])
 def create_session():
     sid = store.new_session()
@@ -271,8 +240,6 @@ def session_status(sid):
     })
 
 
-# -------------------- upload / extraction --------------------
-
 @app.route("/api/upload", methods=["POST"])
 def upload():
     sid = request.form.get("session_id")
@@ -291,7 +258,6 @@ def upload():
     sess = store.get_session(sid)
     sess["files"][filename] = result
 
-    # Auto-detect domain and persist to notebook state without requiring confirm-mapping
     _auto_save_domain(sid, filename, content, result)
 
     return jsonify({"extraction": result, "trace": trace})
@@ -375,10 +341,7 @@ def confirm_mapping():
     })
 
 
-# -------------------- derivation plan + derivation --------------------
-
 def _load_all_dfs(sdir: str) -> dict:
-    """Load all persisted DataFrames from the session directory."""
     dfs = {}
     for v in notebook_engine.available_vars(sdir):
         df = notebook_engine.load_state(sdir, v)
@@ -432,11 +395,9 @@ def derive():
     if result["status"] != "ok":
         return jsonify(result), 200
 
-    # Store provenance into session before persisting datasets
     if "provenance" in result:
         sess["derivation_meta"] = result["provenance"]
 
-    # Persist all derived datasets and build the response payload
     datasets = {}
     for key, df in result["derived"].items():
         notebook_engine.save_state(sdir, key, df)
@@ -475,7 +436,6 @@ def _derive_clinical(sess, sdir):
             "All 5 SDTM domains present (DM, EX, AE, RS, DS). "
             "ADaM pipeline: ADSL from DM+EX+DS, ADAE from AE+ADSL, ADTTE (OS endpoint) from ADSL."
         ),
-        # Read directly from derive_adam.py — lives next to the code that produces each column.
         "variable_origins": derive_adam.PIPELINE_PROVENANCE,
         "low_confidence": [],
     }
@@ -517,14 +477,6 @@ def _derive_lab(sdir):
 
 
 def _derive_plate(sdir):
-    """
-    Build a proper plate-assay derivation:
-    1. Identify signal sheet (numeric READOUT) and compound sheet (string READOUT).
-    2. Join on WELLID; parse COMPOUND@CONCENTRATION format.
-    3. Assign cell lines from a metadata sheet's PLATE_ROWS column if present.
-    4. Normalise to viability %: (signal - blank_mean) / (dmso_mean - blank_mean) * 100.
-    5. Derive PLATE_QC and DOSE_RESPONSE from the normalised table.
-    """
     signal_df = compound_df = metadata_df = None
     signal_var = compound_var = metadata_var = None
 
@@ -549,21 +501,14 @@ def _derive_plate(sdir):
     if signal_df is None:
         return {"status": "error", "error": "No plate signal data found — need a sheet with WELLID + numeric READOUT."}
 
-    # ── 1. Start with signal ─────────────────────────────────────────────────
     plate = signal_df.copy()
     plate["SIGNAL"] = pd.to_numeric(plate["READOUT"], errors="coerce")
     plate = plate.drop(columns=["READOUT"])
 
-    # ── 2. Join compound layout ──────────────────────────────────────────────
     if compound_df is not None:
         comp = compound_df[["WELLID", "READOUT"]].copy()
 
         def _parse_treatment(val):
-            """Return (compound_name, concentration_float_or_None).
-
-            Handles: 'COMPOUND@10.0uM', 'COMPOUND_10.0uM', 'COMPOUND_10.0',
-                     'COMPOUND 10.0uM', plain control labels ('BLANK', 'DMSO').
-            """
             if pd.isna(val):
                 return str(val), None
             s = str(val).strip()
@@ -592,7 +537,6 @@ def _derive_plate(sdir):
         comp = comp.drop(columns=["READOUT"])
         plate = plate.merge(comp, on="WELLID", how="left")
 
-    # ── 3. Assign cell lines from metadata PLATE_ROWS ───────────────────────
     if metadata_df is not None:
         rows_col = derive_contextual._col(metadata_df, ["PLATE_ROWS", "ROWS", "ROW_RANGE"])
         name_col = (derive_contextual._col(metadata_df, ["CELL_LINE_NAME", "CELL_LINE_ID", "SAMPLEID"]) or
@@ -608,7 +552,6 @@ def _derive_plate(sdir):
                     letters = [r.strip().upper() for r in spec.split(",")]
                 plate.loc[plate["ROW"].isin(letters), "CELL_LINE"] = label
 
-    # ── 4. Normalise to viability % ──────────────────────────────────────────
     if "CONTROL_TYPE" in plate.columns:
         blank_mask = plate["CONTROL_TYPE"] == "blank"
         dmso_mask  = plate["CONTROL_TYPE"] == "dmso"
@@ -629,7 +572,6 @@ def _derive_plate(sdir):
             normed.append(grp)
         plate = pd.concat(normed).sort_index()
 
-    # ── 5. Derive QC + dose-response ─────────────────────────────────────────
     plate_qc = derive_contextual.derive_plate_qc(plate.rename(columns={"SIGNAL": "READOUT"}, errors="ignore"))
 
     viability_col = "VIABILITY_PCT" if "VIABILITY_PCT" in plate.columns else "SIGNAL"
@@ -645,7 +587,6 @@ def _derive_plate(sdir):
     else:
         dose_response = derive_contextual.derive_dose_response(plate)
 
-    # ── Build provenance ─────────────────────────────────────────────────────
     origins = {}
     origins["plate_assay.SIGNAL"] = {
         "source": f"{signal_var}.READOUT",
@@ -870,11 +811,8 @@ def _derive_generic(sdir):
     return {"status": "ok", "derived": {"profile": profile, "numeric_summary": numeric_summary}, "provenance": provenance}
 
 
-# -------------------- provenance --------------------
-
 @app.route("/api/session/<sid>/provenance", methods=["GET"])
 def session_provenance(sid):
-    """Return derivation provenance for the notebook footer."""
     if not store.session_exists(sid):
         return jsonify({"error": "unknown session"}), 404
     sess = store.get_session(sid)
@@ -883,9 +821,7 @@ def session_provenance(sid):
     derivation_meta = sess.get("derivation_meta", {})
     files           = sess.get("files", {})
 
-    # Build raw_origins and held_for_review from the actual extraction mapping records
-    # stored in sess["files"], keyed by the variable name each domain was saved as.
-    raw_origins:    dict = {}   # "var.col" -> {source_file, source_col, confidence, action}
+    raw_origins:    dict = {}
     held_for_review: list = []
 
     for domain, ds_meta in domain_source.items():
@@ -937,8 +873,6 @@ def session_provenance(sid):
     })
 
 
-# -------------------- notebook --------------------
-
 @app.route("/api/notebook/run", methods=["POST"])
 def notebook_run():
     body = request.get_json(force=True)
@@ -969,10 +903,8 @@ def notebook_list(sid):
 
 
 def _detect_quality_issues(df, var_name: str) -> list:
-    """Return a list of quality issue dicts for a single DataFrame."""
     issues = []
 
-    # ── Duplicate rows ────────────────────────────────────────────────────────
     dup = int(df.duplicated().sum())
     if dup:
         issues.append({"var": var_name, "col": None, "type": "duplicates",
@@ -985,7 +917,6 @@ def _detect_quality_issues(df, var_name: str) -> list:
         null_count = int(s.isna().sum())
         pct = null_count / max(len(df), 1) * 100
 
-        # ── Missing values ────────────────────────────────────────────────────
         if null_count:
             is_numeric = pd.api.types.is_numeric_dtype(s)
             fill_label = (f"Fill with mean ({s.mean():.3g})" if is_numeric else "Fill with 'UNKNOWN'")
@@ -995,7 +926,6 @@ def _detect_quality_issues(df, var_name: str) -> list:
                             "fix_label": fill_label,
                             "severity": "high" if pct > 20 else "medium" if pct > 5 else "low"})
 
-        # ── Outliers (numeric) ────────────────────────────────────────────────
         if pd.api.types.is_numeric_dtype(s) and s.notna().sum() > 4:
             mu, sigma = float(s.mean()), float(s.std())
             if sigma > 0:
@@ -1006,7 +936,6 @@ def _detect_quality_issues(df, var_name: str) -> list:
                                     "fix": "cap_3sigma", "fix_label": "Cap at ±3σ",
                                     "severity": "medium"})
 
-        # ── Mixed case (low-cardinality strings) ──────────────────────────────
         if s.dtype == object and 1 < s.nunique() <= 30:
             vals = s.dropna().astype(str)
             if vals.str.lower().nunique() < vals.nunique():
@@ -1047,20 +976,17 @@ def quality_check():
     sdir = _session_dir(sid)
     all_issues = []
 
-    # Generic per-column checks (missing values, outliers, mixed case, duplicates)
     for v in notebook_engine.available_vars(sdir):
         df = notebook_engine.load_state(sdir, v)
         if df is not None:
             all_issues.extend(_detect_quality_issues(df, v))
 
-    # Clinical SDTM checks: CT violations, structural rules, referential integrity
     clinical_issues = _validate.run_clinical_quality(
         sdir,
         notebook_engine.available_vars,
         notebook_engine.load_state,
     )
 
-    # Suppress generic "missing values" noise for columns the clinical rules already flag
     clinical_covered = {(i.get("var"), i.get("col")) for i in clinical_issues if i.get("col")}
     filtered_generic = [
         i for i in all_issues
@@ -1079,7 +1005,6 @@ def quality_apply():
     if not store.session_exists(sid):
         return jsonify({"error": "unknown session"}), 404
     sdir = _session_dir(sid)
-    # Group fixes by variable name
     by_var: dict[str, list] = {}
     for fix in fixes:
         by_var.setdefault(fix["var"], []).append(fix)
@@ -1095,7 +1020,6 @@ def quality_apply():
 
 @app.route("/api/export", methods=["GET"])
 def export_xlsx():
-    """Export all derived variables as a formatted XLSX workbook."""
     import io as _io
     from datetime import datetime
     sid = request.args.get("session_id")
@@ -1113,7 +1037,6 @@ def export_xlsx():
     sess = store.get_session(sid)
     available = notebook_engine.available_vars(sdir)
 
-    # Colours — restrained, scientific
     HEADER_FILL  = PatternFill("solid", fgColor="1A3A5C")
     HEADER_FONT  = Font(bold=True, color="FFFFFF", size=10, name="Calibri")
     ALT_FILL     = PatternFill("solid", fgColor="EEF3F8")
@@ -1125,7 +1048,6 @@ def export_xlsx():
 
     wb = Workbook()
 
-    # ── Cover sheet ───────────────────────────────────────────────────────────
     ws0 = wb.active
     ws0.title = "Summary"
     ws0.column_dimensions["A"].width = 24
@@ -1159,7 +1081,6 @@ def export_xlsx():
             ws0.cell(row=r, column=1, value=label).font = Font(bold=True, size=10, name="Calibri", color="1A3A5C")
             ws0.cell(row=r, column=2, value=value).font = META_FONT
 
-    # ── One sheet per variable ────────────────────────────────────────────────
     PREFERRED_ORDER = ["adsl","adae","adtte","plate_assay","dose_response","plate_qc",
                        "lb_summary","lb_flags","lb_shifts","profile","numeric_summary"]
     ordered = [v for v in PREFERRED_ORDER if v in available] + [v for v in available if v not in PREFERRED_ORDER]
@@ -1172,7 +1093,6 @@ def export_xlsx():
         ws = wb.create_sheet(title=var[:31])
         ws.freeze_panes = "A2"
 
-        # Header row
         for ci, col_name in enumerate(df.columns, 1):
             cell = ws.cell(row=1, column=ci, value=str(col_name))
             cell.font = HEADER_FONT
@@ -1180,7 +1100,6 @@ def export_xlsx():
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = BORDER
 
-        # Data rows
         for ri, (_, row) in enumerate(df.iterrows(), 2):
             fill = ALT_FILL if ri % 2 == 0 else None
             for ci, val in enumerate(row, 1):
@@ -1193,13 +1112,11 @@ def export_xlsx():
                 if pd.api.types.is_float_dtype(df.iloc[:, ci-1]):
                     cell.number_format = "0.0000"
 
-        # Auto column widths (capped)
         for ci, col_name in enumerate(df.columns, 1):
             sample_vals = df.iloc[:, ci-1].astype(str).head(50)
             max_len = max(len(str(col_name)), sample_vals.str.len().max() if not sample_vals.empty else 8)
             ws.column_dimensions[get_column_letter(ci)].width = min(max(max_len + 2, 10), 40)
 
-        # Row height
         ws.row_dimensions[1].height = 18
 
     buf = _io.BytesIO()
@@ -1214,7 +1131,6 @@ def export_xlsx():
 
 @app.route("/api/notebook/vars", methods=["GET"])
 def notebook_vars():
-    """Return available variable names + context label for the notebook header."""
     sid = request.args.get("session_id")
     if not store.session_exists(sid):
         return jsonify({"error": "unknown session"}), 404
@@ -1233,12 +1149,6 @@ def notebook_vars():
 
 @app.route("/api/notebook/generate", methods=["POST"])
 def notebook_generate():
-    """
-    Natural-language -> code via Claude API. The model sees only column
-    names + dtypes (schema), never patient-level values. Generated code
-    runs through the same notebook_engine.run_cell() subprocess as
-    manually-typed cells.
-    """
     import codegen
 
     body = request.get_json(force=True)
@@ -1258,7 +1168,6 @@ def notebook_generate():
     sess = store.get_session(sid)
     gen_result = codegen.generate_code(sdir, available, request_text, sess=sess)
     if gen_result["status"] != "ok":
-        # Map internal error details to a safe reason code — never expose raw messages
         err = gen_result.get("error", "")
         if "disallowed pattern" in err and any(p in err for p in ["open(", "import os", "import sys"]):
             reason = "cannot_write_files"
@@ -1272,7 +1181,6 @@ def notebook_generate():
 
     code = gen_result["code"]
 
-    # Verify every column reference in the generated code against actual session schema
     dfs = _load_all_dfs(sdir)
     schema_check = codegen.verify_against_schema(code, dfs)
 

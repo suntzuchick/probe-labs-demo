@@ -1,30 +1,14 @@
-"""
-Stage 3 — Data quality rules for clinical SDTM domains.
-
-Three tiers of checks:
-  1. Controlled-terminology (CT)  — value not in allowed codelist
-  2. Structural / intra-domain    — required fields, impossible values,
-                                    intra-record date logic, unique-key violations
-  3. Referential integrity        — cross-domain FK checks (USUBJID in AE ∉ DM, etc.)
-
-All checks are deterministic. No model involved.
-"""
 import pandas as pd
 from datetime import datetime
 
-# ── Controlled-terminology codelists ─────────────────────────────────────────
 
 CT = {
-    # AE
     "AETOXGR": {"0", "1", "2", "3", "4", "5"},
     "AESER":   {"Y", "N"},
     "AESEV":   {"MILD", "MODERATE", "SEVERE"},
-    # Demographics
     "SEX":     {"M", "F", "U", "UNDIFFERENTIATED"},
-    # Tumor response
     "RSORRES":  {"CR", "PR", "SD", "PD", "NE"},
     "RSSTRESC": {"CR", "PR", "SD", "PD", "NE"},
-    # Disposition — common CDISC completion codes
     "DSDECOD": {
         "COMPLETED",
         "ADVERSE EVENT",
@@ -40,7 +24,6 @@ CT = {
     },
 }
 
-# Required SDTM variables per domain — flagged as ERROR when entirely absent
 REQUIRED = {
     "DM": ["USUBJID", "AGE", "SEX"],
     "AE": ["USUBJID", "AETERM", "AETOXGR"],
@@ -49,12 +32,10 @@ REQUIRED = {
     "DS": ["USUBJID", "DSDECOD", "DSDTC"],
 }
 
-# Columns that must be unique per domain (e.g. one row per subject in DM)
 UNIQUE_KEY = {
     "DM": "USUBJID",
 }
 
-# Date-pair rules: end must be >= start  (column names, either may be absent)
 DATE_ORDER = {
     "AE": ("AESTDTC", "AEENDTC"),
     "EX": ("EXSTDTC", "EXENDTC"),
@@ -62,7 +43,6 @@ DATE_ORDER = {
 
 
 def _parse_date(s: str):
-    """Try common date/datetime formats; return datetime or None."""
     if not isinstance(s, str):
         return None
     s = s.strip()
@@ -71,7 +51,6 @@ def _parse_date(s: str):
             return datetime.strptime(s, fmt)
         except Exception:
             continue
-    # Partial ISO: "2024-03-10T14:30" or "2024-03"
     for prefix_len, fmt in ((10, "%Y-%m-%d"), (7, "%Y-%m")):
         if len(s) >= prefix_len:
             try:
@@ -82,14 +61,9 @@ def _parse_date(s: str):
 
 
 def validate_domain(domain: str, df: pd.DataFrame) -> list:
-    """
-    Run CT + structural checks on a single SDTM domain DataFrame.
-    Returns a list of issue dicts compatible with _detect_quality_issues().
-    """
     domain = domain.upper()
     issues = []
 
-    # ── 1. Required fields ────────────────────────────────────────────────────
     for req_col in REQUIRED.get(domain, []):
         if req_col not in df.columns:
             issues.append({
@@ -114,7 +88,6 @@ def validate_domain(domain: str, df: pd.DataFrame) -> list:
                     "fix_label": "Fill with 'UNKNOWN'",
                 })
 
-    # ── 2. Unique-key violations ──────────────────────────────────────────────
     uk_col = UNIQUE_KEY.get(domain)
     if uk_col and uk_col in df.columns:
         dupes = int(df[uk_col].duplicated().sum())
@@ -133,7 +106,6 @@ def validate_domain(domain: str, df: pd.DataFrame) -> list:
                 "fix_label": "Keep first occurrence of each duplicate",
             })
 
-    # ── 3. Controlled-terminology ─────────────────────────────────────────────
     for col, codelist in CT.items():
         if col not in df.columns:
             continue
@@ -155,7 +127,6 @@ def validate_domain(domain: str, df: pd.DataFrame) -> list:
             "fix_label": "Normalize to uppercase (may still need manual correction)",
         })
 
-    # ── 4. Implausible numeric values ─────────────────────────────────────────
     if domain == "DM" and "AGE" in df.columns:
         ages = pd.to_numeric(df["AGE"], errors="coerce")
         bad_age = int(((ages < 0) | (ages > 120)).sum())
@@ -173,7 +144,6 @@ def validate_domain(domain: str, df: pd.DataFrame) -> list:
                 "fix_label": None,
             })
 
-    # ── 5. Date-ordering violations ───────────────────────────────────────────
     start_col, end_col = DATE_ORDER.get(domain, (None, None))
     if start_col and end_col and start_col in df.columns and end_col in df.columns:
         n_inverted = 0
@@ -204,10 +174,6 @@ def validate_domain(domain: str, df: pd.DataFrame) -> list:
 
 
 def validate_referential_integrity(domain_dfs: dict) -> list:
-    """
-    Cross-domain checks. domain_dfs: {domain_upper: DataFrame}.
-    Returns list of issue dicts.
-    """
     issues = []
     dm_df = domain_dfs.get("DM")
 
@@ -240,12 +206,7 @@ def validate_referential_integrity(domain_dfs: dict) -> list:
 
 
 def run_clinical_quality(sdir, available_vars_fn, load_fn) -> list:
-    """
-    Convenience entry point called from app.py quality_check().
-    Loads all known SDTM domains from the session and runs all checks.
-    Returns combined list of issues, each with a 'var' key for the UI.
-    """
-    domain_map = {}  # domain_upper -> df
+    domain_map = {}
     SDTM_DOMAINS = {"DM", "AE", "EX", "RS", "DS", "LB"}
 
     for v in available_vars_fn(sdir):
@@ -258,16 +219,13 @@ def run_clinical_quality(sdir, available_vars_fn, load_fn) -> list:
 
     all_issues = []
 
-    # Per-domain checks
     for domain_upper, (var_name, df) in domain_map.items():
         for issue in validate_domain(domain_upper, df):
-            issue["var"] = var_name  # needed by UI
+            issue["var"] = var_name
             all_issues.append(issue)
 
-    # Cross-domain referential integrity
     dfs_by_domain = {d: df for d, (_, df) in domain_map.items()}
     for issue in validate_referential_integrity(dfs_by_domain):
-        # Attach var = the non-DM domain's var name
         domain = issue["domain"]
         if domain in domain_map:
             issue["var"] = domain_map[domain][0]

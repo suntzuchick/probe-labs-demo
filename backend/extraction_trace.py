@@ -1,13 +1,3 @@
-"""
-Converts a real extraction result (from extractors/agent.py) into an
-ordered list of log lines that narrate, field by field, what the agent
-actually did -- for the live terminal-style extraction screen. Every
-line is derived directly from real computed values (column names,
-real confidence scores, real row counts); nothing here is scripted
-or pre-written copy standing in for the actual result.
-"""
-
-
 def build_trace(extraction_result: dict) -> list:
     lines = []
     fname = extraction_result.get("filename", "unknown")

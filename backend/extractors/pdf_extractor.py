@@ -1,15 +1,7 @@
-"""
-PDF extractor. Real text + table extraction via pdfplumber.
-Used for protocol documents, SAPs, and lab notes -- extracts candidate
-analysis parameters with real page-number provenance, per the SAP
-extraction sub-harness design (no inference; exact-string match only).
-"""
 import io
 import re
 import pdfplumber
 
-# Parameters worth scanning for in a protocol/SAP-style document.
-# Each pattern captures the literal value as written -- no inference.
 PARAMETER_PATTERNS = {
     "alpha": re.compile(r"\balpha\s*[=:]\s*(0?\.\d+)", re.IGNORECASE),
     "power": re.compile(r"\bpower\s*[=:]\s*(\d{1,3}%|0?\.\d+)", re.IGNORECASE),
@@ -76,7 +68,6 @@ def extract_pdf(content: bytes, filename: str) -> dict:
 
 
 if __name__ == "__main__":
-    # build a tiny test PDF with reportlab if available, else skip
     try:
         from reportlab.pdfgen import canvas
         buf = io.BytesIO()

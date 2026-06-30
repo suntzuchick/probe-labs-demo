@@ -11,7 +11,7 @@
 </head>
 <body class="is-info">
 
-<!-- AUTH OVERLAY — shown when ALLOWED_EMAILS is configured and user is not logged in -->
+
 <div id="auth-overlay" class="auth-overlay" style="display:none">
   <div class="auth-card">
     <div class="auth-brand">
@@ -102,7 +102,7 @@
 
   <main class="main">
 
-    <!-- SCREEN 0: INFO GATE -->
+    
     <section class="screen active" id="screen-0">
       <div class="info-gate">
         <div class="info-gate-brand">
@@ -140,7 +140,7 @@
       </div>
     </section>
 
-    <!-- SCREEN 1: INGEST -->
+    
     <section class="screen" id="screen-1">
       <div class="eyebrow">Stage 1 of 5</div>
       <h1 class="screen-title">Ingest source files</h1>
@@ -168,7 +168,7 @@
       </div>
     </section>
 
-    <!-- SCREEN 2: EXTRACTION TERMINAL -->
+    
     <section class="screen" id="screen-2">
       <div class="eyebrow">Stage 2 of 5</div>
       <h1 class="screen-title">Extraction agent trace</h1>
@@ -182,7 +182,7 @@
       </div>
     </section>
 
-    <!-- SCREEN 3: DATA QUALITY -->
+    
     <section class="screen" id="screen-3">
       <div class="eyebrow">Stage 3 of 5</div>
       <h1 class="screen-title">Data quality</h1>
@@ -196,7 +196,7 @@
       </div>
     </section>
 
-    <!-- SCREEN 4: DERIVATION -->
+    
     <section class="screen" id="screen-4">
       <div class="eyebrow">Stage 4 of 5</div>
       <h1 class="screen-title">Derive analysis datasets</h1>
@@ -206,7 +206,7 @@
       <p class="screen-desc" id="derive-desc">Detecting data type and selecting derivation pipeline…</p>
 
       <div class="run-track" id="run-track">
-        <!-- steps injected by app.js after /api/derive/plan -->
+        
       </div>
 
       <div class="nav-row">
@@ -215,7 +215,7 @@
       </div>
     </section>
 
-    <!-- SCREEN 5: NOTEBOOK -->
+    
     <section class="screen" id="screen-5">
       <div class="eyebrow">Stage 5 of 5</div>
       <div class="notebook-header-row">
@@ -233,14 +233,14 @@
       <div class="generative-hint" id="generative-hint">Describe the analysis you want. Code is written and run automatically against your data. Column names only, never raw values.</div>
 
       <div class="notebook" id="notebook">
-        <!-- cells appended here -->
+        
       </div>
 
       <div class="new-cell-row">
         <button class="btn btn-add-cell" id="add-cell-btn">+ New cell</button>
         <div class="cell-templates" id="cell-templates">
           <span class="template-label">templates:</span>
-          <!-- chips are injected by app.js based on detected data context -->
+          
         </div>
       </div>
     </section>

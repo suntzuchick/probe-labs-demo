@@ -1,8 +1,3 @@
-"""
-Excel (XLSX) extractor. Real openpyxl/pandas parsing.
-Handles multi-sheet workbooks -- a common real-world pattern where each
-sheet is a different assay run, plate, or domain.
-"""
 import io
 import pandas as pd
 from sdtm_mapping import map_columns, is_plate_layout

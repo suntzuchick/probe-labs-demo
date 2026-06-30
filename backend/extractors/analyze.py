@@ -1,4 +1,3 @@
-"""Stage 5 — Statistical computation. lifelines only. No model output enters here."""
 import json
 import pandas as pd
 from lifelines import KaplanMeierFitter, CoxPHFitter
@@ -17,12 +16,7 @@ def run_os_analysis(adtte: pd.DataFrame, dataset_hash: str) -> dict:
     kmf_chemo.fit(chemo["AVAL"], event_observed=(chemo["CNSR"] == 0), label="Chemotherapy")
 
     cox_df = itt.dropna(subset=["ECOGBL"]).copy()
-    # ARM_BIN = 1 for daraxonrasib so the resulting HR reads as "daraxonrasib
-    # vs chemotherapy" -- HR < 1 means daraxonrasib reduces the hazard of death,
-    # matching how RevMed reports RASolute 302 in their public disclosures.
     cox_df["ARM_BIN"] = (cox_df["ARMCD"] == "DARA").astype(int)
-    # lifelines convention: event_col = 1 means event observed, 0 means censored.
-    # CDISC CNSR convention is the opposite (0 = event, 1 = censored), so invert here.
     cox_df["EVENT_OBSERVED"] = (cox_df["CNSR"] == 0).astype(int)
     cox = CoxPHFitter()
     cox.fit(
@@ -33,8 +27,6 @@ def run_os_analysis(adtte: pd.DataFrame, dataset_hash: str) -> dict:
     )
 
     hr = float(cox.hazard_ratios_["ARM_BIN"])
-    # confidence_intervals_ is on the log-hazard (coefficient) scale -- exponentiate
-    # to get the hazard-ratio-scale CI that gets reported alongside HR.
     import math
     ci_log = cox.confidence_intervals_.loc["ARM_BIN"]
     ci_lower = math.exp(ci_log.iloc[0])

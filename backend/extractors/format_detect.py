@@ -1,17 +1,8 @@
-"""
-Format detection for the Probe extraction agent.
-Uses magic bytes / content sniffing, not file extensions, per the
-ingestion-layer design (extensions lie; bytes don't).
-"""
 import json
 import zipfile
 
 
 def detect_format(filename: str, content: bytes) -> str:
-    """
-    Returns one of: "csv", "tsv", "xlsx", "pdf", "image_png", "image_jpeg",
-    "json", "unknown"
-    """
     head = content[:8]
 
     if head[:4] == b"%PDF":
@@ -23,7 +14,6 @@ def detect_format(filename: str, content: bytes) -> str:
     if head[:3] == b"\xff\xd8\xff":
         return "image_jpeg"
 
-    # XLSX is a zip archive with specific internal structure
     if head[:2] == b"PK":
         try:
             with zipfile.ZipFile.__new__(zipfile.ZipFile) as _:
@@ -42,7 +32,6 @@ def detect_format(filename: str, content: bytes) -> str:
             pass
         return "zip_unknown"
 
-    # JSON: try parsing
     stripped = content.strip()
     if stripped[:1] in (b"{", b"["):
         try:
@@ -51,7 +40,6 @@ def detect_format(filename: str, content: bytes) -> str:
         except Exception:
             pass
 
-    # text-based: distinguish csv vs tsv by sniffing first line
     try:
         text_head = content[:4096].decode("utf-8", errors="strict")
         first_line = text_head.split("\n", 1)[0]

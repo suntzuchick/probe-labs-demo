@@ -1,13 +1,3 @@
-"""
-Persistent kernel subprocess for Probe.
-
-Spawned once per session by notebook_engine. All scientific libraries are
-imported at startup so individual cell executions never pay import cost.
-
-Protocol:
-  stdin  ← one JSON line per cell: {"session_dir": "...", "code": "..."}
-  stdout → ___PROBE_OUTPUT_START___ / JSON / ___PROBE_OUTPUT_END___
-"""
 import sys
 import json
 import io
@@ -19,7 +9,6 @@ import traceback
 
 warnings.filterwarnings("ignore")
 
-# ── Core data stack ────────────────────────────────────────────────────────────
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -28,11 +17,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.1)
 
-# ── Survival analysis ─────────────────────────────────────────────────────────
 from lifelines import KaplanMeierFitter, CoxPHFitter
 from lifelines.statistics import logrank_test
 
-# ── Scientific computing / curve fitting ──────────────────────────────────────
 import scipy.optimize as opt
 import scipy.stats as stats
 from scipy.optimize import curve_fit
@@ -44,13 +31,11 @@ from scipy.stats import (
     kruskal, f_oneway, sem, iqr,
 )
 
-# ── Statistical modelling ─────────────────────────────────────────────────────
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.stats.multitest import multipletests
 from statsmodels.graphics.mosaicplot import mosaic
 
-# ── Machine learning / dimensionality reduction ───────────────────────────────
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.cluster import KMeans, AgglomerativeClustering
@@ -58,36 +43,27 @@ from sklearn.metrics import silhouette_score
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
-# ── Biostats with effect sizes ────────────────────────────────────────────────
 try:
     import pingouin as pg
 except ImportError:
     pg = None
 
-# ── UMAP dimensionality reduction ─────────────────────────────────────────────
 try:
     import umap
     UMAP = umap.UMAP
 except ImportError:
     UMAP = None
 
-# ── Bioinformatics ────────────────────────────────────────────────────────────
 try:
     from Bio import SeqIO, Entrez
     from Bio.SeqUtils import gc_fraction
 except ImportError:
     SeqIO = Entrez = gc_fraction = None
 
-# ── 4PL dose-response model (pre-defined so cells can call it directly) ───────
 def hill4(x, bottom, top, ic50, slope):
-    """4-parameter logistic (Hill) equation for dose-response curves."""
     return bottom + (top - bottom) / (1.0 + (ic50 / np.where(x == 0, 1e-12, x)) ** slope)
 
 def fit_4pl(concentrations, viabilities):
-    """
-    Fit a 4PL curve and return (ic50_uM, hill_slope, r_squared, popt).
-    concentrations and viabilities must be array-like, controls excluded.
-    """
     x = np.asarray(concentrations, dtype=float)
     y = np.asarray(viabilities, dtype=float)
     mask = np.isfinite(x) & np.isfinite(y) & (x > 0)
@@ -107,16 +83,13 @@ def fit_4pl(concentrations, viabilities):
     except Exception:
         return None, None, None, None
 
-# ── Z-factor and plate QC helpers ─────────────────────────────────────────────
 def zfactor(pos_vals, neg_vals):
-    """Z-factor for plate assay quality. >0.5 = excellent."""
     mp, mn = np.mean(pos_vals), np.mean(neg_vals)
     sp, sn = np.std(pos_vals), np.std(neg_vals)
     denom  = abs(mp - mn)
     return 1 - 3*(sp + sn)/denom if denom > 0 else np.nan
 
 def plate_cv(vals):
-    """Coefficient of variation (%) for a set of replicate wells."""
     return float(np.std(vals) / np.mean(vals) * 100) if np.mean(vals) != 0 else np.nan
 
 _real_stdout = sys.__stdout__
@@ -124,13 +97,10 @@ _real_stdout.write("___PROBE_READY___\n")
 _real_stdout.flush()
 
 namespace = {
-    # Core
     "pd": pd, "np": np, "plt": plt, "sns": sns,
-    # Survival
     "KaplanMeierFitter": KaplanMeierFitter,
     "CoxPHFitter": CoxPHFitter,
     "logrank_test": logrank_test,
-    # Scipy
     "opt": opt, "stats": stats, "curve_fit": curve_fit,
     "ttest_ind": ttest_ind, "ttest_rel": ttest_rel,
     "mannwhitneyu": mannwhitneyu, "wilcoxon": wilcoxon,
@@ -139,22 +109,16 @@ namespace = {
     "shapiro": shapiro, "normaltest": normaltest, "kstest": kstest,
     "kruskal": kruskal, "f_oneway": f_oneway, "sem": sem, "iqr": iqr,
     "multipletests": multipletests, "mosaic": mosaic,
-    # Statsmodels
     "sm": sm, "smf": smf,
-    # Sklearn
     "PCA": PCA, "StandardScaler": StandardScaler, "MinMaxScaler": MinMaxScaler,
     "KMeans": KMeans, "AgglomerativeClustering": AgglomerativeClustering,
     "silhouette_score": silhouette_score,
     "LinearRegression": LinearRegression, "LogisticRegression": LogisticRegression,
     "RandomForestClassifier": RandomForestClassifier,
     "RandomForestRegressor": RandomForestRegressor,
-    # Biostats
     "pg": pg,
-    # UMAP
     "UMAP": UMAP,
-    # Bioinformatics (None if biopython not installed)
     "SeqIO": SeqIO, "Entrez": Entrez, "gc_fraction": gc_fraction,
-    # Domain helpers
     "hill4": hill4, "fit_4pl": fit_4pl,
     "zfactor": zfactor, "plate_cv": plate_cv,
 }
@@ -175,7 +139,6 @@ while True:
     session_dir = request["session_dir"]
     code        = request["code"]
 
-    # Load every persisted session variable
     if os.path.isdir(session_dir):
         for fname in os.listdir(session_dir):
             if not fname.endswith(".pkl"):
@@ -220,7 +183,6 @@ while True:
         figures_b64.append(base64.b64encode(buf.read()).decode("ascii"))
     plt.close("all")
 
-    # Persist session variables — anything already on disk or any new DataFrame
     already_persisted = (
         {f[:-4] for f in os.listdir(session_dir) if f.endswith(".pkl")}
         if os.path.isdir(session_dir) else set()
