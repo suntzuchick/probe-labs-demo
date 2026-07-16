@@ -1,9 +1,9 @@
 services:
   - type: web
     name: probe-demo
-    runtime: python
-    buildCommand: apt-get install -y tesseract-ocr && cd frontend && npm ci && npm run build && cd .. && pip install -r requirements.txt
-    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --timeout 240 --workers 1
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       # Set these in the Render dashboard — never commit secrets to the repo
       - key: ANTHROPIC_API_KEY
