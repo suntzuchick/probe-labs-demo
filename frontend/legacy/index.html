@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Probe — Notebook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<!-- Vendored locally (vendor/) rather than loaded from a CDN — the bare
+     "@6" jsdelivr URL for vega-embed is reliably blocked by Chromium's
+     Opaque Response Blocking, which breaks every chart with no way to
+     recover. Self-hosting removes that network dependency entirely. -->
+<script src="vendor/vega.min.js"></script>
+<script src="vendor/vega-lite.min.js"></script>
+<script src="vendor/vega-embed.min.js"></script>
+</head>
+<body class="is-info">
+
+
+<div id="auth-overlay" class="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="probe-logo auth-logo">Probe<span class="probe-dot">.</span></div>
+      <p class="auth-subtitle">Extraction · Quality · Derivation · Analysis · Evidence · Narratives</p>
+    </div>
+
+    <div id="auth-request-section">
+      <p class="auth-desc">Enter your email address to receive an access link.</p>
+      <form id="auth-form" novalidate>
+        <input class="info-input auth-email-input" type="email" id="auth-email"
+               placeholder="your@institution.edu" autocomplete="email" required>
+        <div class="auth-error" id="auth-error"></div>
+        <button type="submit" class="btn btn-primary auth-submit">Send access link →</button>
+      </form>
+    </div>
+
+    <div id="auth-sent-section" style="display:none">
+      <div class="auth-sent-icon">✓</div>
+      <p class="auth-desc"><strong>Access link for <span id="auth-sent-email"></span></strong></p>
+      <p class="auth-sub">Copy this link and send it to them. It expires in 7 days and can only be used once.</p>
+      <div class="auth-link-row">
+        <input class="auth-link-input" id="auth-magic-link" type="text" readonly>
+        <button class="btn auth-copy-btn" id="auth-copy-btn">Copy</button>
+      </div>
+      <button class="btn auth-try-again" id="auth-try-again">Generate link for a different email</button>
+    </div>
+
+    <p class="auth-footer">Access is by invitation only. Contact <a href="mailto:sera@thingblinglabs.io">sera@thingblinglabs.io</a> to request access.</p>
+  </div>
+</div>
+
+<div class="masthead">
+  <div class="masthead-left">
+    <div class="probe-logo masthead-logo">Probe<span class="probe-dot">.</span></div>
+    <div>
+      <div class="masthead-title">Extraction agent &amp; analysis notebook</div>
+      <div class="masthead-sub">Drop files, watch them get read, write real code against the results.</div>
+    </div>
+  </div>
+  <div class="masthead-right">
+    <span id="masthead-user" class="masthead-user"></span>
+    session: <span id="session-id">—</span>
+    <button id="logout-btn" class="btn-logout" style="display:none">Sign out</button>
+  </div>
+</div>
+
+<div class="shell">
+
+  <nav class="rail" aria-label="Pipeline stages">
+    <div class="rail-label">Stages</div>
+    <div class="rail-stage active" data-stage="1">
+      <div class="rail-dot">1</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Ingest</div>
+        <div class="rail-stage-meta" id="rail-meta-1">awaiting files</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="2">
+      <div class="rail-dot">2</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Extraction trace</div>
+        <div class="rail-stage-meta" id="rail-meta-2">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="3">
+      <div class="rail-dot">3</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Data quality</div>
+        <div class="rail-stage-meta" id="rail-meta-3">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="4">
+      <div class="rail-dot">4</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Derivation</div>
+        <div class="rail-stage-meta" id="rail-meta-4">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="5">
+      <div class="rail-dot">5</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Contextual understanding</div>
+        <div class="rail-stage-meta" id="rail-meta-5">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="6">
+      <div class="rail-dot">6</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Notebook</div>
+        <div class="rail-stage-meta" id="rail-meta-6">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="7">
+      <div class="rail-dot">7</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Analysis</div>
+        <div class="rail-stage-meta" id="rail-meta-7">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="8">
+      <div class="rail-dot">8</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Evidence</div>
+        <div class="rail-stage-meta" id="rail-meta-8">—</div>
+      </div>
+    </div>
+    <div class="rail-stage" data-stage="9">
+      <div class="rail-dot">9</div>
+      <div class="rail-stage-text">
+        <div class="rail-stage-name">Narratives</div>
+        <div class="rail-stage-meta" id="rail-meta-9">—</div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    
+    <section class="screen active" id="screen-0">
+      <div class="info-gate">
+        <div class="info-gate-brand">
+          <div class="probe-logo info-gate-logo">Probe<span class="probe-dot">.</span></div>
+          <h1 class="info-gate-title">Scientific data notebook</h1>
+          <p class="info-gate-sub">Extraction · Quality · Derivation · Analysis · Evidence · Narratives</p>
+        </div>
+        <div class="info-gate-card">
+          <h2 class="info-gate-form-title">Tell us about your project</h2>
+          <p class="info-gate-form-desc">This keeps sessions organized and your export properly attributed.</p>
+          <form id="info-form" class="info-form" novalidate>
+            <div class="info-row">
+              <div class="info-field">
+                <label class="info-label" for="info-name">Name <span class="info-req">*</span></label>
+                <input class="info-input" type="text" id="info-name" required autocomplete="name" placeholder="Dr. Jane Smith">
+              </div>
+              <div class="info-field">
+                <label class="info-label" for="info-org">Organization <span class="info-req">*</span></label>
+                <input class="info-input" type="text" id="info-org" required autocomplete="organization" placeholder="Broad Institute">
+              </div>
+            </div>
+            <div class="info-field">
+              <label class="info-label" for="info-email">Email <span class="info-req">*</span></label>
+              <input class="info-input" type="email" id="info-email" required autocomplete="email" placeholder="jane@broad.mit.edu">
+            </div>
+            <div class="info-field">
+              <label class="info-label" for="info-project">What are you analyzing? <span class="info-optional">(optional)</span></label>
+              <input class="info-input" type="text" id="info-project" placeholder="e.g. Phase II KRAS inhibitor trial · viability screen · lab panel">
+            </div>
+            <div class="info-error" id="info-error"></div>
+            <button type="submit" class="btn btn-primary info-submit">Get started →</button>
+          </form>
+          <button type="button" class="info-skip-link" id="info-skip-btn">Skip for this demo →</button>
+        </div>
+        <p class="info-gate-footer">Data stays local. Only column names leave your machine, as part of API calls.</p>
+      </div>
+    </section>
+
+    
+    <section class="screen" id="screen-1">
+      <div class="eyebrow">Stage 1 of 9</div>
+      <h1 class="screen-title">Ingest source files</h1>
+      <p class="screen-desc">Drop CSVs, Excel files, PDFs, plate maps, or images. Probe detects the format and reads the real content.</p>
+
+      <div class="upload-zone" id="dropzone">
+        <input type="file" id="file-input" multiple style="display:none">
+        <i class="zone-icon">⤓</i>
+        <div class="zone-text">Drop files here, or <button class="zone-browse" id="browse-btn">browse</button></div>
+        <div class="zone-formats">CSV · TSV · XLSX · PDF · PNG/JPEG · JSON</div>
+      </div>
+
+      <button class="btn" id="load-sample-btn"><i class="ti">⚛</i> Load RASolute 302 (simulated) — 6 domains, 200 subjects</button>
+
+      <div class="domain-grid" id="domain-grid">
+        <div class="domain-card" data-domain="DM"><div class="code">DM</div><div class="label">Demographics</div><div class="stat"></div></div>
+        <div class="domain-card" data-domain="EX"><div class="code">EX</div><div class="label">Exposure</div><div class="stat"></div></div>
+        <div class="domain-card" data-domain="AE"><div class="code">AE</div><div class="label">Adverse events</div><div class="stat"></div></div>
+        <div class="domain-card" data-domain="RS"><div class="code">RS</div><div class="label">Tumor response</div><div class="stat"></div></div>
+        <div class="domain-card" data-domain="DS"><div class="code">DS</div><div class="label">Disposition</div><div class="stat"></div></div>
+        <div class="domain-card" data-domain="DV"><div class="code">DV</div><div class="label">Protocol deviations</div><div class="stat"></div></div>
+      </div>
+
+      <div class="nav-row">
+        <button class="btn btn-primary" id="btn-to-trace" disabled>View extraction trace <i class="ti">→</i></button>
+      </div>
+    </section>
+
+    
+    <section class="screen" id="screen-2">
+      <div class="eyebrow">Stage 2 of 9</div>
+      <h1 class="screen-title">Extraction agent trace</h1>
+      <p class="screen-desc">A live account of what the agent did to each file: format detection, layout classification, and confidence scores for every column mapping.</p>
+
+      <div class="terminal" id="terminal"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-1"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-to-quality" disabled>Check data quality <i class="ti">→</i></button>
+      </div>
+    </section>
+
+    
+    <section class="screen" id="screen-3">
+      <div class="eyebrow">Stage 3 of 9</div>
+      <h1 class="screen-title">Data quality</h1>
+      <p class="screen-desc" id="quality-desc">Scanning ingested variables for missing values, outliers, type mismatches, and inconsistent categories…</p>
+
+      <div id="quality-issue-list" class="quality-issue-list"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-2"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-apply-quality">Apply selected fixes &amp; continue <i class="ti">→</i></button>
+      </div>
+    </section>
+
+    
+    <section class="screen" id="screen-4">
+      <div class="eyebrow">Stage 4 of 9</div>
+      <h1 class="screen-title">Derive analysis datasets</h1>
+      <div class="context-badge-row">
+        <span class="context-badge" id="context-badge">detecting…</span>
+      </div>
+      <p class="screen-desc" id="derive-desc">Detecting data type and selecting derivation pipeline…</p>
+
+      <div class="run-track" id="run-track">
+        
+      </div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-3"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-to-understanding" disabled>See what the agent understood <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-5">
+      <div class="eyebrow">Stage 5 of 9</div>
+      <h1 class="screen-title">Contextual understanding</h1>
+      <p class="screen-desc" id="understanding-desc">Reading the derived tables' real shape — types, entities, what's measurable — before anything downstream leans on assumptions about it.</p>
+
+      <div class="dash-intel" id="dash-intel" style="display:none"></div>
+
+      <div class="questions-panel" id="understanding-uq-panel" style="display:none">
+        <div class="questions-head">The agent's own questions about this data <span class="questions-count" id="understanding-uq-count"></span></div>
+        <div class="dash-preview-list" id="understanding-uq-list"></div>
+      </div>
+      <div class="synthesis-library" id="understanding-uq-results"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-5"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-to-notebook" disabled>Open notebook <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-6">
+      <div class="eyebrow">Stage 6 of 9</div>
+      <div class="notebook-header-row">
+        <h1 class="screen-title">Notebook</h1>
+        <button class="btn btn-export" id="export-btn">Export dataset ↓</button>
+      </div>
+      <p class="screen-desc" id="notebook-desc">
+        Available variables: <code id="var-list">loading…</code>. Real pandas DataFrames. Write code, run the cell, get real output.
+      </p>
+
+      <div class="generative-row">
+        <input type="text" id="generative-input" class="generative-input" placeholder='e.g. "plot IC50 by cell line" or "show KM curve by arm"'>
+        <button class="btn btn-generate" id="generative-submit-btn">Analyze →</button>
+      </div>
+      <div class="generative-hint" id="generative-hint">Describe the analysis you want. Code is written and run automatically against your data. Column names only, never raw values.</div>
+
+      <div class="notebook" id="notebook">
+
+      </div>
+
+      <div class="new-cell-row">
+        <button class="btn btn-add-cell" id="add-cell-btn">+ New cell</button>
+        <div class="cell-templates" id="cell-templates">
+          <span class="template-label">templates:</span>
+
+        </div>
+      </div>
+
+      <div class="notebook-analysis-panel">
+        <div class="questions-head" style="margin-top:8px;">The agent's own statistical pass over this data <span class="questions-count" id="notebook-questions-count"></span></div>
+        <p class="screen-desc" id="notebook-analysis-desc">The Hypothesis Agent reads the schema, proposes the questions below on its own, and answers every one autonomously — Planner → Code Builder → Evaluator, live, no input needed.</p>
+
+        <div class="dash-controls" id="notebook-analysis-controls" style="display:none">
+          <button class="btn" id="notebook-analysis-rerun-btn" style="display:none">Re-run failed/new questions →</button>
+        </div>
+
+        <div class="questions-panel" id="notebook-questions-panel" style="display:none">
+          <div class="dash-preview-list" id="notebook-preview-list"></div>
+        </div>
+
+        <div class="dash-library" id="notebook-dash-library"></div>
+
+        <div class="dash-view" id="notebook-dash-view" style="display:none"></div>
+      </div>
+
+      <div class="nav-row">
+        <button class="btn btn-primary" id="btn-notebook-continue">Continue to analysis <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-oracles">
+      <div class="act-banner">Act 3 of 3 — Compare 3 trials, with outside benchmarks</div>
+      <h1 class="screen-title">Oracle comparisons</h1>
+      <p class="screen-desc">External reference points — historical trial norms, benchmark literature, population baselines — that ground what "normal" looks like for this data. From here on, Evidence and Narratives will cite these alongside the notebook's own results.</p>
+
+      <p class="screen-desc" id="oracle-desc" style="margin-top:-16px;">Loading previously resolved oracles…</p>
+
+      <div class="oracle-resolve-row">
+        <select id="oracle-type-select" class="oracle-select"></select>
+        <input type="text" id="oracle-metric-input" class="generative-input" placeholder='metric, e.g. "objective response rate"'>
+        <input type="text" id="oracle-population-input" class="generative-input" placeholder='population, e.g. "KRAS G12D, second-line"'>
+        <input type="text" id="oracle-condition-input" class="generative-input" placeholder='condition, e.g. "NSCLC"'>
+        <button class="btn btn-generate" id="oracle-resolve-btn">Resolve oracle →</button>
+      </div>
+
+      <div class="oracle-list" id="oracle-list"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-oracles"><i class="ti">←</i> Back to narratives</button>
+        <button class="btn btn-primary" id="btn-oracles-to-analysis">Continue to evidence <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-7">
+      <div class="eyebrow">Stage 7 of 9</div>
+      <h1 class="screen-title">Analysis</h1>
+      <p class="screen-desc" id="dash-desc">Weighing what the notebook found, together.</p>
+
+      <div class="dash-controls" id="dash-controls" style="display:none">
+        <span class="dash-controls-hint">The Synthesis Agent reads every notebook result and proposes a handful of questions that only make sense by connecting several of them — then answers each on its own, live.</span>
+        <button class="btn" id="dash-autopilot-btn" style="display:none">Re-run failed/new questions →</button>
+      </div>
+
+      <div class="questions-panel" id="questions-panel" style="display:none">
+        <div class="questions-head">Questions the agent is answering <span class="questions-count" id="questions-count"></span></div>
+        <div class="dash-preview-list" id="dash-preview-list"></div>
+      </div>
+
+      <div class="synthesis-library" id="synthesis-library"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-7"><i class="ti">←</i> Back to notebook</button>
+        <button class="btn btn-primary" id="btn-to-evidence">Continue to evidence <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-8">
+      <div class="eyebrow">Stage 8 of 9</div>
+      <h1 class="screen-title">Evidence</h1>
+      <p class="screen-desc" id="evidence-desc">Every claim the notebook and analysis produced, collected into one reviewable queue. Nothing reaches a narrative without passing through here.</p>
+
+      <div class="dash-controls" id="evidence-oracle-section" style="display:none">
+        <button class="btn btn-primary" id="evidence-benchmark-btn">Benchmark against outside research <i class="ti">→</i></button>
+        <span class="dash-controls-hint">Checks each analysis in turn for a rate-like claim, asks the Oracle Agent for real outside sources, and records the comparison as evidence — live below.</span>
+      </div>
+
+      <div class="evidence-annotate-row">
+        <input type="text" id="evidence-annotate-input" class="generative-input" placeholder="Add your own observation as evidence…">
+        <button class="btn btn-generate" id="evidence-annotate-btn">Add →</button>
+      </div>
+
+      <div class="terminal" id="evidence-log" style="display:none"></div>
+
+      <div class="evidence-benchmark-results" id="evidence-benchmark-results"></div>
+
+      <div class="evidence-list" id="evidence-list"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-8"><i class="ti">←</i> Back to analysis</button>
+        <button class="btn btn-primary" id="btn-to-narratives">Continue to narratives <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-9">
+      <div class="eyebrow" id="screen-9-eyebrow">Stage 9 of 9</div>
+      <h1 class="screen-title">Narratives</h1>
+      <p class="screen-desc" id="narr-desc">A narrative pulls together several analyses and the evidence behind them into one argument, grounded end to end.</p>
+
+      <div class="nav-row" style="margin-top:0; margin-bottom:24px;">
+        <button class="btn btn-primary" id="narr-generate-btn">Compose narrative <i class="ti">→</i></button>
+      </div>
+
+      <div class="narr-list" id="narr-list"></div>
+
+      <div class="narr-view" id="narr-view" style="display:none"></div>
+
+      <div class="act-transition" id="act-transition" style="display:none">
+        <div class="act-transition-title" id="act-transition-title"></div>
+        <p class="screen-desc" id="act-transition-desc"></p>
+        <button class="btn btn-primary" id="act-transition-btn"></button>
+      </div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-9"><i class="ti">←</i> Back to evidence</button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-10">
+      <div class="act-banner" id="act-banner-10">Act 2 of 3 — Compare 3 trials</div>
+      <h1 class="screen-title">Ingest &amp; clean 3 trials</h1>
+      <p class="screen-desc">Drop your own files for up to three trials, or load three prebaked trials of the same drug class — same real ingestion and quality-check machinery as Act 1, run once per trial, so there's something genuine to compare in the notebook next.</p>
+
+      <div class="upload-zone" id="triple-dropzone">
+        <input type="file" id="triple-file-input" multiple style="display:none">
+        <i class="zone-icon">⤓</i>
+        <div class="zone-text">Drop files here, or <button class="zone-browse" id="triple-browse-btn">browse</button></div>
+        <div class="zone-formats">CSV · TSV · XLSX · PDF · PNG/JPEG · JSON</div>
+      </div>
+
+      <button class="btn" id="load-triple-btn"><i class="ti">⚛</i> Load 3 prebaked trials (simulated)</button>
+
+      <div class="triple-ingest-grid" id="triple-ingest-grid"></div>
+
+      <div class="terminal" id="triple-ingest-log" style="display:none"></div>
+
+      <div class="nav-row">
+        <button class="btn btn-primary" id="btn-triple-to-quality" disabled>Check data quality <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-13">
+      <div class="act-banner" id="act-banner-13">Act 2 of 3 — Compare 3 trials</div>
+      <h1 class="screen-title">Data quality — 3 trials</h1>
+      <p class="screen-desc" id="triple-quality-desc">Scanning ingested variables across all three trials for missing values, outliers, type mismatches, and inconsistent categories…</p>
+
+      <div id="triple-quality-issue-list" class="quality-issue-list"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-13"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-apply-triple-quality">Apply selected fixes &amp; continue <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-11">
+      <div class="act-banner" id="act-banner-11">Act 2 of 3 — Compare 3 trials</div>
+      <h1 class="screen-title">Contextual understanding</h1>
+      <p class="screen-desc" id="triple-understanding-desc">Reading all three trials' real shape, together — including whether they're actually comparable.</p>
+
+      <div class="dash-intel" id="triple-dash-intel" style="display:none"></div>
+
+      <div class="questions-panel" id="triple-uq-panel" style="display:none">
+        <div class="questions-head">The agent's own questions about this data <span class="questions-count" id="triple-uq-count"></span></div>
+        <div class="dash-preview-list" id="triple-uq-list"></div>
+      </div>
+      <div class="synthesis-library" id="triple-uq-results"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-11"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-triple-to-notebook" disabled>Open notebook <i class="ti">→</i></button>
+      </div>
+    </section>
+
+
+    <section class="screen" id="screen-12">
+      <div class="act-banner" id="act-banner-12">Act 2 of 3 — Compare 3 trials</div>
+      <h1 class="screen-title">Notebook — comparisons</h1>
+      <p class="screen-desc" id="triple-notebook-desc">Same three-trial tables (adsl_a/b/c, adae_a/b/c, adtte_a/b/c, ...), real pandas, running in the same sandboxed kernel as Act 1's notebook.</p>
+
+      <div class="dash-controls" id="triple-na-controls" style="display:none">
+        <span class="dash-controls-hint">The Hypothesis Agent proposes cross-trial questions on its own — every one requires comparing at least two trials — and answers each autonomously, live.</span>
+        <button class="btn" id="triple-na-rerun-btn" style="display:none">Re-run failed/new questions →</button>
+      </div>
+
+      <div class="questions-panel" id="triple-nq-panel" style="display:none">
+        <div class="questions-head">Cross-trial questions the agent is answering <span class="questions-count" id="triple-nq-count"></span></div>
+        <div class="dash-preview-list" id="triple-nq-list"></div>
+      </div>
+      <div class="dash-library" id="triple-dash-library"></div>
+      <div class="dash-view" id="triple-dash-view" style="display:none"></div>
+
+      <div class="nav-row">
+        <button class="btn" id="btn-back-12"><i class="ti">←</i> Back</button>
+        <button class="btn btn-primary" id="btn-triple-notebook-continue">Continue to analysis <i class="ti">→</i></button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

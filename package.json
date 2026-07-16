@@ -1,0 +1,21 @@
+{
+  "name": "probe-demo",
+  "version": "1.0.0",
+  "description": "A real extraction agent followed by a real, free-form Python notebook — not a fixed dashboard, not a chatbot. Four screens: ingest, watch the agent's real reasoning trace, derive, then write and run actual code against the real data.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sera-probe-ai/probe-demo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sera-probe-ai/probe-demo/issues"
+  },
+  "homepage": "https://github.com/sera-probe-ai/probe-demo#readme"
+}

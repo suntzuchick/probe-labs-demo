@@ -1,0 +1,56 @@
+USUBJID,STUDYID,DOMAIN,DVDTC,DVTERM,DVDECOD,DVCAT
+RVMD-001-0005,RASOLUTE302-SIM,DV,2023-12-04,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0011,RASOLUTE302-SIM,DV,2023-12-31,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0015,RASOLUTE302-SIM,DV,2023-08-04,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0017,RASOLUTE302-SIM,DV,2024-01-13,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RVMD-001-0017,RASOLUTE302-SIM,DV,2023-11-21,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0018,RASOLUTE302-SIM,DV,2023-03-21,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0020,RASOLUTE302-SIM,DV,2023-11-04,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0020,RASOLUTE302-SIM,DV,2023-11-23,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0021,RASOLUTE302-SIM,DV,2023-04-20,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RVMD-001-0024,RASOLUTE302-SIM,DV,2023-10-18,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0025,RASOLUTE302-SIM,DV,2023-07-21,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0025,RASOLUTE302-SIM,DV,2023-05-16,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0036,RASOLUTE302-SIM,DV,2023-10-06,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0041,RASOLUTE302-SIM,DV,2023-10-01,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0042,RASOLUTE302-SIM,DV,2023-10-01,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RVMD-001-0065,RASOLUTE302-SIM,DV,2023-08-29,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0072,RASOLUTE302-SIM,DV,2023-11-01,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0072,RASOLUTE302-SIM,DV,2023-11-29,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0094,RASOLUTE302-SIM,DV,2023-10-24,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0094,RASOLUTE302-SIM,DV,2023-09-27,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0097,RASOLUTE302-SIM,DV,2023-09-02,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0099,RASOLUTE302-SIM,DV,2023-05-05,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0101,RASOLUTE302-SIM,DV,2023-04-29,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0101,RASOLUTE302-SIM,DV,2023-03-20,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0102,RASOLUTE302-SIM,DV,2023-08-22,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0102,RASOLUTE302-SIM,DV,2023-08-26,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0115,RASOLUTE302-SIM,DV,2023-04-04,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0117,RASOLUTE302-SIM,DV,2023-07-27,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0117,RASOLUTE302-SIM,DV,2023-04-26,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0122,RASOLUTE302-SIM,DV,2023-10-16,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RVMD-001-0122,RASOLUTE302-SIM,DV,2023-10-14,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0123,RASOLUTE302-SIM,DV,2023-04-05,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0126,RASOLUTE302-SIM,DV,2023-07-23,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0128,RASOLUTE302-SIM,DV,2023-10-28,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RVMD-001-0131,RASOLUTE302-SIM,DV,2023-07-27,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0133,RASOLUTE302-SIM,DV,2023-05-22,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RVMD-001-0133,RASOLUTE302-SIM,DV,2023-04-05,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0136,RASOLUTE302-SIM,DV,2023-09-16,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0142,RASOLUTE302-SIM,DV,2023-05-03,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0148,RASOLUTE302-SIM,DV,2023-04-03,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0155,RASOLUTE302-SIM,DV,2023-02-26,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RVMD-001-0161,RASOLUTE302-SIM,DV,2023-12-07,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0163,RASOLUTE302-SIM,DV,2023-12-09,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0168,RASOLUTE302-SIM,DV,2023-08-11,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RVMD-001-0174,RASOLUTE302-SIM,DV,2023-12-31,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0174,RASOLUTE302-SIM,DV,2024-01-03,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RVMD-001-0186,RASOLUTE302-SIM,DV,2023-11-06,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RVMD-001-0186,RASOLUTE302-SIM,DV,2023-10-28,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RVMD-001-0191,RASOLUTE302-SIM,DV,2023-08-27,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0195,RASOLUTE302-SIM,DV,2023-09-22,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0195,RASOLUTE302-SIM,DV,2023-09-01,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RVMD-001-0197,RASOLUTE302-SIM,DV,2023-12-14,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RVMD-001-0199,RASOLUTE302-SIM,DV,2023-08-22,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RVMD-001-0199,RASOLUTE302-SIM,DV,2023-09-10,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RVMD-001-0200,RASOLUTE302-SIM,DV,2023-10-07,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
