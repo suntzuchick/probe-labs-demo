@@ -1,0 +1,66 @@
+USUBJID,STUDYID,DOMAIN,DVDTC,DVTERM,DVDECOD,DVCAT
+RASOLUTE-M-B-0001,RASOLUTE-CONFIRM-B,DV,2023-08-02,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-M-B-0007,RASOLUTE-CONFIRM-B,DV,2023-06-27,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0007,RASOLUTE-CONFIRM-B,DV,2023-07-02,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0010,RASOLUTE-CONFIRM-B,DV,2023-07-10,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0012,RASOLUTE-CONFIRM-B,DV,2023-08-26,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0016,RASOLUTE-CONFIRM-B,DV,2024-01-30,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0018,RASOLUTE-CONFIRM-B,DV,2023-04-11,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0019,RASOLUTE-CONFIRM-B,DV,2023-05-03,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0019,RASOLUTE-CONFIRM-B,DV,2023-07-05,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0030,RASOLUTE-CONFIRM-B,DV,2023-03-01,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0037,RASOLUTE-CONFIRM-B,DV,2023-06-03,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RASOLUTE-M-B-0037,RASOLUTE-CONFIRM-B,DV,2023-03-06,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0038,RASOLUTE-CONFIRM-B,DV,2023-11-22,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0038,RASOLUTE-CONFIRM-B,DV,2024-03-21,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0049,RASOLUTE-CONFIRM-B,DV,2023-12-07,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-M-B-0049,RASOLUTE-CONFIRM-B,DV,2023-12-15,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0058,RASOLUTE-CONFIRM-B,DV,2023-10-23,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0059,RASOLUTE-CONFIRM-B,DV,2024-03-26,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-M-B-0061,RASOLUTE-CONFIRM-B,DV,2024-01-24,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0068,RASOLUTE-CONFIRM-B,DV,2024-02-08,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RASOLUTE-M-B-0068,RASOLUTE-CONFIRM-B,DV,2024-05-14,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0077,RASOLUTE-CONFIRM-B,DV,2023-08-06,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0077,RASOLUTE-CONFIRM-B,DV,2023-05-01,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0078,RASOLUTE-CONFIRM-B,DV,2023-06-22,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0090,RASOLUTE-CONFIRM-B,DV,2023-12-05,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0091,RASOLUTE-CONFIRM-B,DV,2024-06-16,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0094,RASOLUTE-CONFIRM-B,DV,2023-08-26,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0101,RASOLUTE-CONFIRM-B,DV,2023-08-14,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0101,RASOLUTE-CONFIRM-B,DV,2023-09-28,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0102,RASOLUTE-CONFIRM-B,DV,2024-05-17,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0102,RASOLUTE-CONFIRM-B,DV,2024-07-20,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0103,RASOLUTE-CONFIRM-B,DV,2023-05-03,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0103,RASOLUTE-CONFIRM-B,DV,2023-04-15,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0108,RASOLUTE-CONFIRM-B,DV,2024-02-20,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0116,RASOLUTE-CONFIRM-B,DV,2023-10-19,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0120,RASOLUTE-CONFIRM-B,DV,2023-05-25,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0123,RASOLUTE-CONFIRM-B,DV,2023-10-17,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0126,RASOLUTE-CONFIRM-B,DV,2023-10-12,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0126,RASOLUTE-CONFIRM-B,DV,2023-08-26,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0127,RASOLUTE-CONFIRM-B,DV,2023-05-08,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0151,RASOLUTE-CONFIRM-B,DV,2023-09-22,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0152,RASOLUTE-CONFIRM-B,DV,2024-01-21,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0152,RASOLUTE-CONFIRM-B,DV,2023-11-04,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0156,RASOLUTE-CONFIRM-B,DV,2023-06-25,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0156,RASOLUTE-CONFIRM-B,DV,2023-06-28,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0161,RASOLUTE-CONFIRM-B,DV,2023-11-26,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0166,RASOLUTE-CONFIRM-B,DV,2024-04-27,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0166,RASOLUTE-CONFIRM-B,DV,2024-02-25,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-M-B-0167,RASOLUTE-CONFIRM-B,DV,2023-05-29,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-M-B-0168,RASOLUTE-CONFIRM-B,DV,2023-12-14,Subject enrolled outside protocol-specified eligibility window,INCLUSION/EXCLUSION CRITERIA DEVIATION,MAJOR
+RASOLUTE-M-B-0168,RASOLUTE-CONFIRM-B,DV,2024-04-01,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RASOLUTE-M-B-0170,RASOLUTE-CONFIRM-B,DV,2023-04-17,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-M-B-0190,RASOLUTE-CONFIRM-B,DV,2023-02-19,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RASOLUTE-M-B-0210,RASOLUTE-CONFIRM-B,DV,2023-08-07,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0210,RASOLUTE-CONFIRM-B,DV,2023-03-24,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0216,RASOLUTE-CONFIRM-B,DV,2024-01-28,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0223,RASOLUTE-CONFIRM-B,DV,2023-02-15,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-M-B-0224,RASOLUTE-CONFIRM-B,DV,2023-12-12,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0241,RASOLUTE-CONFIRM-B,DV,2023-05-05,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0246,RASOLUTE-CONFIRM-B,DV,2023-12-18,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0246,RASOLUTE-CONFIRM-B,DV,2023-09-30,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-M-B-0253,RASOLUTE-CONFIRM-B,DV,2023-08-22,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0261,RASOLUTE-CONFIRM-B,DV,2023-06-27,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-M-B-0263,RASOLUTE-CONFIRM-B,DV,2023-12-09,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-M-B-0268,RASOLUTE-CONFIRM-B,DV,2023-11-01,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR

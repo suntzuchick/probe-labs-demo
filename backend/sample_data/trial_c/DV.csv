@@ -1,0 +1,16 @@
+USUBJID,STUDYID,DOMAIN,DVDTC,DVTERM,DVDECOD,DVCAT
+RASOLUTE-D-C-0006,RASOLUTE-EXPAND-C,DV,2024-11-16,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-D-C-0013,RASOLUTE-EXPAND-C,DV,2024-05-28,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-D-C-0022,RASOLUTE-EXPAND-C,DV,2024-10-24,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-D-C-0024,RASOLUTE-EXPAND-C,DV,2024-04-19,Study visit conducted outside the protocol-specified visit window,VISIT WINDOW NOT MET,MINOR
+RASOLUTE-D-C-0027,RASOLUTE-EXPAND-C,DV,2024-02-14,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-D-C-0029,RASOLUTE-EXPAND-C,DV,2025-03-09,Scheduled dose not administered within protocol-defined window,MISSED DOSE ADMINISTRATION,MINOR
+RASOLUTE-D-C-0037,RASOLUTE-EXPAND-C,DV,2025-05-16,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-D-C-0052,RASOLUTE-EXPAND-C,DV,2024-06-19,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-D-C-0052,RASOLUTE-EXPAND-C,DV,2024-06-07,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-D-C-0055,RASOLUTE-EXPAND-C,DV,2024-08-30,Informed consent form signed after study procedure initiated,INFORMED CONSENT ISSUE,MAJOR
+RASOLUTE-D-C-0065,RASOLUTE-EXPAND-C,DV,2025-03-03,Incorrect dose administered relative to protocol-specified regimen,DOSING ERROR,MAJOR
+RASOLUTE-D-C-0065,RASOLUTE-EXPAND-C,DV,2024-11-15,Required assessment not performed per protocol schedule,STUDY PROCEDURE NOT PERFORMED PER PROTOCOL,MINOR
+RASOLUTE-D-C-0082,RASOLUTE-EXPAND-C,DV,2024-04-16,Prohibited concomitant medication administered during treatment period,PROHIBITED CONCOMITANT MEDICATION,MAJOR
+RASOLUTE-D-C-0085,RASOLUTE-EXPAND-C,DV,2024-06-16,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR
+RASOLUTE-D-C-0095,RASOLUTE-EXPAND-C,DV,2025-03-18,Biological sample collected outside required processing window,SAMPLE COLLECTION ERROR,MINOR

@@ -138,6 +138,7 @@ while True:
 
     session_dir = request["session_dir"]
     code        = request["code"]
+    protected   = set(request.get("protected") or [])
 
     if os.path.isdir(session_dir):
         for fname in os.listdir(session_dir):
@@ -189,6 +190,17 @@ while True:
     )
     for v, val in namespace.items():
         if v.startswith("_") or val is None:
+            continue
+        # Canonical source/derived tables (dm, adsl, ...) are loaded into this
+        # same namespace above so generated code can read them — but never
+        # write them back here, even if the code reassigned or mutated the
+        # variable in its own local scope. Without this, a generated cell
+        # that merely does `dm = dm.merge(...)` on its way to computing
+        # something else silently overwrites the real imported dm.pkl with
+        # whatever that intermediate frame looked like — a real corruption
+        # this app hit (dm went from 200 rows to 400 with duplicate
+        # USUBJIDs after an unrelated analysis cell touched the name).
+        if v in protected:
             continue
         if v in already_persisted or isinstance(val, pd.DataFrame):
             try:

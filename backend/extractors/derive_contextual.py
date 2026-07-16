@@ -7,6 +7,7 @@ CLINICAL_VARS = {
     "EXSTDTC", "EXENDTC", "EXTRT", "EXDOSE",
     "AETERM", "AEDECOD", "AEBODSYS", "AETOXGR", "AESER",
     "RSORRES", "RSEVAL", "DSDECOD", "DSDTC",
+    "DVTERM", "DVDECOD", "DVCAT", "DVDTC",
 }
 LAB_VARS = {"LBTEST", "LBORRES", "LBORRESU", "LBSTNRLO", "LBSTNRHI"}
 PLATE_VARS = {"WELLID", "PLATEID", "SAMPLEID", "CONCENTRATION", "READOUT"}
@@ -103,6 +104,23 @@ _TIME_KEYWORDS = {
     "date", "time", "day", "week", "month", "year", "hour",
     "timestamp", "datetime", "visit", "timepoint", "period", "cycle",
 }
+
+# Table names a *previous* generic/time-series/expression/grouped derive pass
+# produces (see CONTEXTS' step keys above). Re-classifying and re-deriving
+# must never treat these as fresh raw source data — a derive that includes
+# its own prior output as "new" input isn't idempotent: run it twice and
+# PROFILE/NUMERIC_SUMMARY themselves get profiled, tipping classification
+# into something else entirely and compounding into nonsense on every
+# subsequent call. Only genuinely uploaded/derived-elsewhere tables belong here.
+_GENERIC_DERIVED_TABLES = {
+    step["key"]
+    for ctx_key in ("time_series", "expression_matrix", "grouped_comparison", "generic")
+    for step in CONTEXTS[ctx_key]["steps"]
+}
+
+
+def _exclude_generic_derived(dfs: dict) -> dict:
+    return {k: v for k, v in dfs.items() if k not in _GENERIC_DERIVED_TABLES}
 
 
 def _detect_sub_context(dfs: dict) -> str:
@@ -238,11 +256,13 @@ def classify_context(sess: dict, dfs: dict = None) -> str:
         return best
 
     if dfs:
-        return _detect_sub_context(dfs)
+        source_dfs = _exclude_generic_derived(dfs)
+        return _detect_sub_context(source_dfs) if source_dfs else "generic"
     return "generic"
 
 
 def get_plan(sess: dict, dfs: dict = None) -> dict:
+    dfs = _exclude_generic_derived(dfs) if dfs else dfs
     context = classify_context(sess, dfs=dfs)
     if dfs and context in ("time_series", "expression_matrix", "grouped_comparison"):
         meta = _customize_plan(context, dfs)
@@ -296,6 +316,8 @@ def auto_detect_domain(extraction_result: dict) -> str | None:
         return "RS"
     if "DSDECOD" in auto_vars:
         return "DS"
+    if "DVDECOD" in auto_vars or "DVTERM" in auto_vars:
+        return "DV"
 
     return "DATA"
 

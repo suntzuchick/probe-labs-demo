@@ -2,8 +2,15 @@ import io
 import os
 import re
 import sys
+import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "extractors"))
+
+from dotenv import load_dotenv
+# Loads backend/.env if present (local dev convenience — gitignored, never
+# committed). In production (Render) env vars are set directly in the
+# dashboard and this is a no-op since no .env file exists there.
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -17,13 +24,46 @@ import derive_contextual
 import notebook_engine
 import validate as _validate
 import auth as _auth
+import indexer
+import dashboard_engine
+import synthesis_engine
+import understanding_engine
+import db
+import dataset_registry
+import evidence
+import norm_registry
+import narrative_workspace
+import oracle_engine
+import reports
+import narrative_engine
+import corpus_store
+import hypothesis_registry
+import editor_lint
 
 from flask import redirect, send_from_directory
 
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+_FRONTEND_ROOT = os.path.join(os.path.dirname(__file__), "..", "frontend")
+# The single-page pipeline wizard (Ingest -> Extraction -> Quality -> Derive ->
+# Notebook -> Oracles -> Analysis -> Evidence -> Narratives) is the product's
+# real UI. It's plain HTML/CSS/JS with no build step, so Flask serves it
+# directly rather than a Vite dist/ output.
+FRONTEND_DIR = os.path.join(_FRONTEND_ROOT, "legacy")
 
 app = Flask(__name__)
 CORS(app, expose_headers=["X-Probe-Token"])
+db.init_db()
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    # Without this, an unhandled exception in a Claude-calling route (real LLM
+    # output doesn't always match the shape a mocked test assumed) returns
+    # Flask's raw HTML 500 page. The frontend's res.json() then throws on a
+    # parse error, which surfaces as nothing happening at all rather than a
+    # readable error. Print the full traceback server-side (terminal running
+    # `python3 app.py`) and return real JSON so the frontend can show it.
+    traceback.print_exc()
+    return jsonify({"status": "error", "error": f"{type(e).__name__}: {e}"}), 500
 
 
 def _session_token_from_request():
@@ -93,7 +133,11 @@ def auth_verify():
 def auth_status():
     token = _session_token_from_request()
     email = _auth.validate_session(token or "") if token else None
-    return jsonify({"authenticated": bool(email), "email": email or ""})
+    return jsonify({
+        "authenticated": bool(email),
+        "email": email or "",
+        "auth_enabled": _auth.auth_enabled(),
+    })
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -213,13 +257,37 @@ def session_info():
     if not store.session_exists(sid):
         return jsonify({"error": "unknown session"}), 404
     sess = store.get_session(sid)
-    sess["user_info"] = {
-        "name":         body.get("name", "").strip(),
-        "organization": body.get("organization", "").strip(),
-        "email":        body.get("email", "").strip(),
-        "project":      body.get("project", "").strip(),
-    }
+    # Merge, don't replace — a caller updating just "project" (e.g. renaming
+    # a workspace) shouldn't blank out name/organization/email set earlier.
+    existing = dict(sess.get("user_info") or {})
+    for field in ("name", "organization", "email", "project"):
+        if field in body:
+            existing[field] = body[field].strip() if isinstance(body[field], str) else body[field]
+    sess["user_info"] = existing
+    db.persist_session(sid, sess)
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/session/list", methods=["GET"])
+def session_list():
+    """Real workspace switcher backing — every persisted session, summarized.
+    A "workspace" in this UI is a project-scoped session (its own datasets,
+    narratives, evidence), not the narrative-drafting workspace/branching
+    unit narrative_workspace.py implements — those are two different things
+    that happen to share a name in the design this maps from."""
+    out = []
+    for s in db.list_sessions():
+        sid = s["sid"]
+        out.append({
+            "sid": sid,
+            "name": (s.get("user_info") or {}).get("project") or f"Session {sid[:8]}",
+            "narratives": len(db.list_narratives(sid, include_synthetic=False)),
+            "datasets": len((dataset_registry.get_current(sid) or {}).get("manifest", {})),
+            "evidence": len(db.list_evidence(sid)),
+            "updated_at": s.get("created_at"),
+            "current": sid == request.args.get("current_sid"),
+        })
+    return jsonify({"status": "ok", "workspaces": out})
 
 
 @app.route("/api/session/<sid>/status", methods=["GET"])
@@ -237,6 +305,8 @@ def session_status(sid):
         "context": plan["context"],
         "context_label": plan["context_label"],
         "notebook_vars": notebook_engine.available_vars(_session_dir(sid)),
+        "oracles_enabled": bool(sess.get("oracles_enabled", False)),
+        "act": sess.get("act", 1),
     })
 
 
@@ -271,7 +341,7 @@ def load_sample():
         return jsonify({"error": "unknown session"}), 404
 
     sess = store.get_session(sid)
-    domain_files = {"DM": "DM.csv", "EX": "EX.csv", "AE": "AE.csv", "RS": "RS.csv", "DS": "DS.csv"}
+    domain_files = {"DM": "DM.csv", "EX": "EX.csv", "AE": "AE.csv", "RS": "RS.csv", "DS": "DS.csv", "DV": "DV.csv"}
     loaded = {}
     all_traces = []
 
@@ -345,9 +415,199 @@ def _load_all_dfs(sdir: str) -> dict:
     dfs = {}
     for v in notebook_engine.available_vars(sdir):
         df = notebook_engine.load_state(sdir, v)
-        if df is not None:
+        # Code Builder cells can leave behind non-DataFrame scratch values
+        # (lists, scalars, tuples) under names that were once DataFrames —
+        # the kernel persists on name reuse regardless of type. Only real
+        # tables belong in the indexed dataset view.
+        if isinstance(df, pd.DataFrame):
             dfs[v] = df
     return dfs
+
+
+TRIAL_SUFFIXES = ("a", "b", "c")
+
+
+def _load_triple_dfs(sdir: str) -> dict:
+    """Only the triple-trial suffixed tables (dm_a, adsl_a, adsl_b, adsl_c,
+    ...) — Act 2/3 sessions may still carry an earlier Act 1's unprefixed
+    tables in the same sandbox dir (one continuous session), and those
+    shouldn't leak into cross-trial schema context."""
+    dfs = {}
+    for v in notebook_engine.available_vars(sdir):
+        if not any(v.endswith(f"_{s}") for s in TRIAL_SUFFIXES):
+            continue
+        df = notebook_engine.load_state(sdir, v)
+        if isinstance(df, pd.DataFrame):
+            dfs[v] = df
+    return dfs
+
+
+TRIPLE_SAMPLE_DIRS = {
+    "a": (SAMPLE_DATA_DIR, "RASOLUTE302-SIM", "Trial A — RASolute 302"),
+    "b": (os.path.join(SAMPLE_DATA_DIR, "trial_b"), "RASOLUTE-CONFIRM-B", "Trial B — confirmatory, larger, multi-region"),
+    "c": (os.path.join(SAMPLE_DATA_DIR, "trial_c"), "RASOLUTE-EXPAND-C", "Trial C — expansion cohort, smaller N"),
+}
+
+
+@app.route("/api/load-triple-trials", methods=["POST"])
+def load_triple_trials():
+    """Act 2/3's ingestion step — three prebaked clinical trials (same drug
+    class, different populations/effect sizes) loaded in one call so the
+    demo can go straight to real cross-trial comparison. Real extraction/
+    trace machinery is reused per trial, just namespaced by suffix."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+
+    domain_files = {"DM": "DM.csv", "EX": "EX.csv", "AE": "AE.csv", "RS": "RS.csv", "DS": "DS.csv", "DV": "DV.csv"}
+    trials = {}
+    all_traces = []
+    for suffix, (data_dir, study_id, label) in TRIPLE_SAMPLE_DIRS.items():
+        loaded = {}
+        for domain, fname in domain_files.items():
+            path = os.path.join(data_dir, fname)
+            with open(path, "rb") as fh:
+                content = fh.read()
+            extraction = extract(fname, content)
+            trace = build_trace(extraction)
+            all_traces.append({"filename": f"{fname} ({label})", "domain": domain, "trace": trace, "trial": suffix})
+
+            df = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False)
+            notebook_engine.save_state(sdir, f"{domain.lower()}_{suffix}", df)
+            loaded[domain] = {"filename": fname, "n_rows": len(df)}
+        trials[suffix] = {"label": label, "study_id": study_id, "loaded": loaded}
+
+    sess["act"] = 2
+    sess["trials"] = trials
+    return jsonify({"status": "ok", "trials": trials, "traces": all_traces})
+
+
+@app.route("/api/derive-triple", methods=["POST"])
+def derive_triple():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    if not sess.get("trials"):
+        return jsonify({"status": "error", "error": "Load the three trials first."}), 200
+
+    results = {}
+    for suffix in TRIAL_SUFFIXES:
+        try:
+            dm = notebook_engine.load_state(sdir, f"dm_{suffix}")
+            ex = notebook_engine.load_state(sdir, f"ex_{suffix}")
+            ae = notebook_engine.load_state(sdir, f"ae_{suffix}")
+            rs = notebook_engine.load_state(sdir, f"rs_{suffix}")
+            ds = notebook_engine.load_state(sdir, f"ds_{suffix}")
+            dv = notebook_engine.load_state(sdir, f"dv_{suffix}")
+            adsl, adae, adtte = derive_adam.run_pipeline(dm, ex, ae, rs, ds, dv=dv)
+        except Exception as e:
+            results[suffix] = {"status": "error", "error": str(e)}
+            continue
+        derived = {"adsl": adsl, "adae": adae, "adtte": adtte, "rs": rs}
+        if dv is not None and not dv.empty:
+            derived["addv"] = derive_adam.derive_addv(dv, adsl)
+        for key, df in derived.items():
+            notebook_engine.save_state(sdir, f"{key}_{suffix}", df)
+        results[suffix] = {
+            "status": "ok",
+            "datasets": {f"{key}_{suffix}": {"rows": len(df), "columns": list(df.columns)} for key, df in derived.items()},
+        }
+
+    sess.setdefault("derived_vars", [])
+    for suffix, r in results.items():
+        if r["status"] == "ok":
+            sess["derived_vars"] = sorted(set(sess["derived_vars"]) | set(r["datasets"].keys()))
+
+    return jsonify({"status": "ok", "trials": results})
+
+
+@app.route("/api/index/build-triple", methods=["POST"])
+def index_build_triple():
+    """Combined Contextual Understanding across all 3 trials — runs the same
+    deterministic classifier per trial (indexer.classify_dataset already
+    expects unprefixed table names, so each trial's suffixed tables get
+    temporarily de-suffixed for the call) and merges the results."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    triple_dfs = _load_triple_dfs(sdir)
+    if not triple_dfs:
+        return jsonify({"status": "error", "error": "No triple-trial data derived yet."}), 200
+
+    per_trial = {}
+    entities, metrics, supported, unsupported, risks = set(), set(), set(), set(), []
+    for suffix in TRIAL_SUFFIXES:
+        sub_dfs = {name[:-len(f"_{suffix}")]: df for name, df in triple_dfs.items() if name.endswith(f"_{suffix}")}
+        if not sub_dfs:
+            continue
+        u = indexer.classify_dataset(sub_dfs, "clinical_trial")
+        label = (sess.get("trials", {}).get(suffix) or {}).get("label", f"Trial {suffix.upper()}")
+        u["label"] = label
+        u["n_subjects"] = int(sub_dfs["adsl"]["USUBJID"].nunique()) if "adsl" in sub_dfs and "USUBJID" in sub_dfs["adsl"].columns else None
+        per_trial[suffix] = u
+        entities |= set(u["entities"])
+        metrics |= set(u["available_metrics"])
+        supported |= set(u["supported_analyses"])
+        unsupported |= set(u["unsupported_analyses"])
+        risks.extend(f"{label}: {r}" for r in u.get("risks", []))
+
+    combined = {
+        "dataset_type": "clinical_trial_adam_multi",
+        "trials": per_trial,
+        "entities": sorted(entities), "available_metrics": sorted(metrics),
+        "supported_analyses": sorted(supported), "unsupported_analyses": sorted(unsupported - supported),
+        "risks": risks, "generated_by": "heuristic",
+    }
+    schema = indexer._schema_index(triple_dfs)
+
+    sess["dataset_understanding"] = combined
+    if not sess.get("indexes"):
+        sess["indexes"] = {}
+    sess["indexes"]["schema"] = schema
+    sess["indexes"]["dataset"] = {"supported": combined["supported_analyses"], "unsupported": combined["unsupported_analyses"]}
+
+    return jsonify({"status": "ok", "understanding": combined})
+
+
+@app.route("/api/understanding/candidates", methods=["GET"])
+def understanding_candidates():
+    """Contextual Understanding's own gen-AI pass — the Data Understanding
+    Agent asks questions about the data's nature/provenance/comparability
+    (never a statistic — that's Notebook's job), works the same for a single
+    dataset or the combined multi-trial view, whichever this session has."""
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    understanding = sess.get("dataset_understanding")
+    schema_index = (sess.get("indexes") or {}).get("schema")
+    if not understanding or not schema_index:
+        return jsonify({"status": "error", "error": "Build the understanding card first."}), 200
+    return jsonify(understanding_engine.generate_understanding_questions(understanding, schema_index))
+
+
+@app.route("/api/understanding/generate", methods=["POST"])
+def understanding_generate():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    question = body.get("question")
+    if not store.session_exists(sid) or not question:
+        return jsonify({"error": "session_id and question required"}), 400
+    sess = store.get_session(sid)
+    understanding = sess.get("dataset_understanding")
+    schema_index = (sess.get("indexes") or {}).get("schema")
+    if not understanding or not schema_index:
+        return jsonify({"status": "error", "error": "Build the understanding card first."}), 200
+    return jsonify(understanding_engine.answer_understanding_question(question, understanding, schema_index))
 
 
 @app.route("/api/derive/plan", methods=["GET"])
@@ -371,6 +631,11 @@ def derive():
     sess = store.get_session(sid)
     sdir = _session_dir(sid)
     dfs = _load_all_dfs(sdir)
+    # Never let a previous generic/time-series/expression/grouped derive
+    # pass's own output (profile, numeric_summary, group_stats, ...) get
+    # re-classified or re-derived as if it were fresh source data — that's
+    # not idempotent and compounds into nonsense on a second derive call.
+    source_dfs = derive_contextual._exclude_generic_derived(dfs)
     plan = derive_contextual.get_plan(sess, dfs=dfs)
     context = plan["context"]
 
@@ -382,11 +647,11 @@ def derive():
         elif context == "plate_assay":
             result = _derive_plate(sdir)
         elif context == "time_series":
-            result = _derive_time_series(sdir, dfs)
+            result = _derive_time_series(sdir, source_dfs)
         elif context == "expression_matrix":
-            result = _derive_expression(sdir, dfs)
+            result = _derive_expression(sdir, source_dfs)
         elif context == "grouped_comparison":
-            result = _derive_grouped(sdir, dfs)
+            result = _derive_grouped(sdir, source_dfs)
         else:
             result = _derive_generic(sdir)
     except Exception as e:
@@ -402,6 +667,9 @@ def derive():
     for key, df in result["derived"].items():
         notebook_engine.save_state(sdir, key, df)
         datasets[key] = {"rows": len(df), "columns": list(df.columns)}
+
+    sess.setdefault("derived_vars", [])
+    sess["derived_vars"] = sorted(set(sess["derived_vars"]) | set(datasets.keys()))
 
     return jsonify({
         "status": "ok",
@@ -420,26 +688,35 @@ def _derive_clinical(sess, sdir):
     ex = notebook_engine.load_state(sdir, "ex")
     ae = notebook_engine.load_state(sdir, "ae")
     ds = notebook_engine.load_state(sdir, "ds")
+    # DV (protocol deviations) is optional — collected whenever ingested, but
+    # never blocks derivation the way the 5 required domains do.
+    dv = notebook_engine.load_state(sdir, "dv") if "DV" in sess.get("domain_data", {}) else None
 
     if "AGE" in dm.columns:
         dm["AGE"] = pd.to_numeric(dm["AGE"], errors="coerce")
     if "ECOGBL" in dm.columns:
         dm["ECOGBL"] = pd.to_numeric(dm["ECOGBL"], errors="coerce")
 
-    adsl  = derive_adam.derive_adsl(dm, ex, ds)
+    adsl  = derive_adam.derive_adsl(dm, ex, ds, dv=dv)
     adae  = derive_adam.derive_adae(ae, adsl)
     adtte = derive_adam.derive_adtte(adsl)
+    derived = {"adsl": adsl, "adae": adae, "adtte": adtte}
+    if dv is not None and not dv.empty:
+        derived["addv"] = derive_adam.derive_addv(dv, adsl)
 
     provenance = {
         "recipe": "clinical_trial",
         "fired_because": (
-            "All 5 SDTM domains present (DM, EX, AE, RS, DS). "
-            "ADaM pipeline: ADSL from DM+EX+DS, ADAE from AE+ADSL, ADTTE (OS endpoint) from ADSL."
+            "All 5 SDTM domains present (DM, EX, AE, RS, DS)" +
+            (" plus DV (protocol deviations)" if dv is not None and not dv.empty else "") + ". "
+            "ADaM pipeline: ADSL from DM+EX+DS" + ("+DV" if dv is not None and not dv.empty else "") +
+            ", ADAE from AE+ADSL, ADTTE (OS endpoint) from ADSL" +
+            (", ADDV (deviation summary) from DV+ADSL" if dv is not None and not dv.empty else "") + "."
         ),
         "variable_origins": derive_adam.PIPELINE_PROVENANCE,
         "low_confidence": [],
     }
-    return {"status": "ok", "derived": {"adsl": adsl, "adae": adae, "adtte": adtte}, "provenance": provenance}
+    return {"status": "ok", "derived": derived, "provenance": provenance}
 
 
 def _derive_lab(sdir):
@@ -789,6 +1066,7 @@ def _derive_generic(sdir):
     all_vars = notebook_engine.available_vars(sdir)
     dfs = {v: notebook_engine.load_state(sdir, v) for v in all_vars}
     dfs = {v: df for v, df in dfs.items() if df is not None}
+    dfs = derive_contextual._exclude_generic_derived(dfs)
     if not dfs:
         return {"status": "error", "error": "No data found in session to derive from."}
 
@@ -809,6 +1087,262 @@ def _derive_generic(sdir):
         "low_confidence": [],
     }
     return {"status": "ok", "derived": {"profile": profile, "numeric_summary": numeric_summary}, "provenance": provenance}
+
+
+def _current_context(sess) -> str:
+    try:
+        return derive_contextual.get_plan(sess).get("context", "generic")
+    except Exception:
+        return "generic"
+
+
+@app.route("/api/index/build", methods=["POST"])
+def index_build():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    dfs = _load_all_dfs(sdir)
+    if not dfs:
+        return jsonify({"status": "error", "error": "No derived data yet — run derivation first."}), 200
+
+    context = _current_context(sess)
+    built = indexer.build_indexes(dfs, context, existing_dashboards=sess.get("dashboards", []), sid=sid)
+    sess["dataset_understanding"] = built["understanding"]
+    sess["indexes"] = built["indexes"]
+
+    canonical_vars = {e.get("var_name", d.lower()) for d, e in sess.get("domain_source", {}).items()}
+    canonical_vars |= set(sess.get("derived_vars", []))
+    version = dataset_registry.register_version(sid, dfs, canonical_vars=canonical_vars or None,
+                                                 understanding=built["understanding"])
+    sess["dataset_fingerprint"] = version["fingerprint"]
+    sess["dataset_version_id"] = version["id"]
+    sess["_understanding_built_for_fingerprint"] = version["fingerprint"]
+
+    db.persist_session(sid, sess)
+
+    return jsonify({
+        "status": "ok",
+        "context": context,
+        "understanding": built["understanding"],
+        "indexes": {
+            "dataset": built["indexes"]["dataset"],
+            "entity": built["indexes"]["entity"],
+            "metric": built["indexes"]["metric"],
+            "cohort": built["indexes"]["cohort"],
+            "narrative": built["indexes"]["narrative"],
+            "finding": built["indexes"]["finding"],
+            "schema_var_count": {v: len(cols) for v, cols in built["indexes"]["schema"].items()},
+        },
+    })
+
+
+@app.route("/api/index/understanding", methods=["GET"])
+def index_understanding():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    if not sess.get("dataset_understanding"):
+        return jsonify({"status": "not_built"}), 200
+    return jsonify({
+        "status": "ok",
+        "understanding": sess["dataset_understanding"],
+        "indexes": {
+            "dataset": sess["indexes"]["dataset"],
+            "entity": sess["indexes"]["entity"],
+            "metric": sess["indexes"]["metric"],
+            "cohort": sess["indexes"]["cohort"],
+        },
+    })
+
+
+def _ensure_indexes(sid, sess, sdir):
+    """Returns (understanding, schema_index, dfs, error_response_or_None).
+
+    Registers/looks up the dataset version for the current dataframes on
+    every call (cheap — a content hash, no LLM) and rebuilds the classifier
+    output whenever that fingerprint doesn't match what understanding was
+    last built from. Before dataset_registry existed, understanding was only
+    ever built once per session and silently went stale after any later
+    upload/derive — this is the fix for that, not just a cache.
+
+    Act 2/3 (triple-trial) sessions skip all of this — /api/index/build-triple
+    already built the combined understanding/schema explicitly, keyed on
+    suffixed table names the single-trial classifier below doesn't know
+    about, and dataset-version caching isn't meaningful across 3 datasets
+    at once.
+    """
+    if sess.get("act", 1) >= 2:
+        dfs = _load_triple_dfs(sdir)
+        if not dfs:
+            return None, None, None, ({"status": "error", "error": "No triple-trial data derived yet."}, 200)
+        if not sess.get("dataset_understanding"):
+            return None, None, None, ({"status": "error", "error": "Build contextual understanding first."}, 200)
+        return sess["dataset_understanding"], sess["indexes"]["schema"], dfs, None
+
+    dfs = _load_all_dfs(sdir)
+    if not dfs:
+        return None, None, None, ({"status": "error", "error": "No derived data yet — run derivation first."}, 200)
+
+    canonical_vars = {e.get("var_name", d.lower()) for d, e in sess.get("domain_source", {}).items()}
+    canonical_vars |= set(sess.get("derived_vars", []))
+    version = dataset_registry.register_version(sid, dfs, canonical_vars=canonical_vars or None,
+                                                 understanding=sess.get("dataset_understanding"))
+    sess["dataset_fingerprint"] = version["fingerprint"]
+    sess["dataset_version_id"] = version["id"]
+
+    stale = version["fingerprint"] != (sess.get("_understanding_built_for_fingerprint"))
+    if not sess.get("dataset_understanding") or stale:
+        context = _current_context(sess)
+        built = indexer.build_indexes(dfs, context, existing_dashboards=sess.get("dashboards", []))
+        sess["dataset_understanding"] = built["understanding"]
+        sess["indexes"] = built["indexes"]
+        sess["_understanding_built_for_fingerprint"] = version["fingerprint"]
+        db.update_dataset_version_understanding(version["id"], built["understanding"])
+    return sess["dataset_understanding"], sess["indexes"]["schema"], dfs, None
+
+
+@app.route("/api/dashboards/candidates", methods=["GET"])
+def dashboards_candidates():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    understanding, schema_index, dfs, error = _ensure_indexes(sid, sess, sdir)
+    if error:
+        return jsonify(error[0]), error[1]
+    return jsonify(dashboard_engine.list_candidates(dfs, understanding, schema_index, compare_mode=sess.get("act", 1) >= 2))
+
+
+@app.route("/api/dashboards/generate", methods=["POST"])
+def dashboards_generate():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    mode = body.get("mode", "autopilot")
+    question = body.get("question")
+
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    understanding, schema_index, dfs, error = _ensure_indexes(sid, sess, sdir)
+    if error:
+        return jsonify(error[0]), error[1]
+    fingerprint = sess.get("dataset_fingerprint")
+    version_id = sess.get("dataset_version_id")
+
+    if mode == "copilot":
+        if not question:
+            return jsonify({"status": "error", "error": "question required for copilot mode"}), 200
+        result = dashboard_engine.generate_copilot(sess, sdir, understanding, schema_index, question,
+                                                    dataset_fingerprint=fingerprint, sid=sid, dataset_version_id=version_id)
+    else:
+        result = dashboard_engine.generate_autopilot(sess, sdir, dfs, understanding, schema_index,
+                                                       dataset_fingerprint=fingerprint, sid=sid, dataset_version_id=version_id)
+
+    if sess.get("indexes"):
+        sess["indexes"]["dashboard"] = [
+            {"dashboard_id": d["dashboard_id"], "question": d["question"]} for d in sess["dashboards"]
+        ]
+
+    return jsonify(result)
+
+
+@app.route("/api/dashboards/followups", methods=["POST"])
+def dashboards_followups():
+    """Tree-shaped investigation: given a question already answered (and what
+    was actually found), ask the Hypothesis Agent what to look at next. This
+    is the mechanism that replaces a static "try asking" suggestion list —
+    every suggestion past the first pass is grounded in a real prior result,
+    not a blind schema scan."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    question = body.get("question")
+    stats = body.get("stats") or {}
+    chart_type = body.get("chart_type")
+
+    if not store.session_exists(sid) or not question:
+        return jsonify({"error": "session_id and question required"}), 400
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    understanding, schema_index, dfs, error = _ensure_indexes(sid, sess, sdir)
+    if error:
+        return jsonify(error[0]), error[1]
+
+    return jsonify(dashboard_engine.generate_followups(understanding, schema_index, dfs, question, stats, chart_type))
+
+
+@app.route("/api/analysis/candidates", methods=["GET"])
+def analysis_candidates():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    understanding = sess.get("dataset_understanding") or {}
+    notebook_results = sess.get("dashboards", [])
+    return jsonify(synthesis_engine.generate_synthesis_questions(understanding, notebook_results))
+
+
+@app.route("/api/analysis/generate", methods=["POST"])
+def analysis_generate():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    question = body.get("question")
+    relevant_indices = body.get("relevant_result_indices") or []
+    if not store.session_exists(sid) or not question:
+        return jsonify({"error": "session_id and question required"}), 400
+    sess = store.get_session(sid)
+    understanding = sess.get("dataset_understanding") or {}
+    notebook_results = sess.get("dashboards", [])
+    result = synthesis_engine.answer_synthesis_question(
+        sid, sess.get("dataset_version_id"), question, notebook_results, relevant_indices, understanding,
+    )
+    return jsonify(result)
+
+
+@app.route("/api/dashboards", methods=["GET"])
+def dashboards_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    catalog = [
+        {k: v for k, v in d.items() if k != "code"}
+        for d in sess.get("dashboards", [])
+    ]
+    return jsonify({"dashboards": catalog})
+
+
+@app.route("/api/dashboards/<did>", methods=["GET"])
+def dashboards_get(did):
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    artifact = next((d for d in sess.get("dashboards", []) if d["dashboard_id"] == did), None)
+    if artifact is None:
+        return jsonify({"error": "unknown dashboard"}), 404
+    return jsonify(artifact)
+
+
+@app.route("/api/dashboards/promote", methods=["POST"])
+def dashboards_promote():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    cell_id = body.get("cell_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    cell = next((c for c in sess.get("canvas_cells", []) if c["id"] == cell_id), None)
+    if cell is None:
+        return jsonify({"status": "error", "error": "unknown cell_id"}), 200
+    result = dashboard_engine.promote_cell(sess, cell)
+    return jsonify(result)
 
 
 @app.route("/api/session/<sid>/provenance", methods=["GET"])
@@ -1129,6 +1663,36 @@ def export_xlsx():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+@app.route("/api/reports", methods=["GET"])
+def reports_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    return jsonify({"status": "ok", "reports": reports.list_for_session(sid)})
+
+
+@app.route("/api/reports/generate", methods=["POST"])
+def reports_generate():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    source_type = body.get("source_type")
+    source_id = body.get("source_id")
+    if not store.session_exists(sid) or not source_type or not source_id:
+        return jsonify({"error": "session_id, source_type, source_id required"}), 400
+    result = reports.generate_pdf(sid, source_type, source_id)
+    return jsonify(result), (200 if result["status"] == "ok" else 400)
+
+
+@app.route("/api/reports/<rid>/download", methods=["GET"])
+def reports_download(rid):
+    report = db.get_report(rid)
+    if report is None or not os.path.exists(report["file_path"]):
+        return jsonify({"error": "unknown report"}), 404
+    from flask import send_file
+    return send_file(report["file_path"], as_attachment=True,
+                      download_name=f"{report['name'][:50].replace('/', '-')}.pdf", mimetype="application/pdf")
+
+
 @app.route("/api/notebook/vars", methods=["GET"])
 def notebook_vars():
     sid = request.args.get("session_id")
@@ -1197,6 +1761,457 @@ def notebook_generate():
     sess["canvas_cells"].append(cell_record)
 
     return jsonify(cell_record)
+
+
+@app.route("/api/oracle/resolve", methods=["POST"])
+def oracle_resolve():
+    body = request.get_json(force=True)
+    oracle_type = body.get("oracle_type")
+    population_args = body.get("population_args", {})
+    force = bool(body.get("force", False))
+    if not oracle_type:
+        return jsonify({"status": "error", "error": "oracle_type required"}), 200
+    result = oracle_engine.resolve_oracle(oracle_type, population_args, force=force)
+    return jsonify(result)
+
+
+@app.route("/api/oracle/types", methods=["GET"])
+def oracle_types():
+    return jsonify({"status": "ok", "types": oracle_engine.ORACLE_TYPES})
+
+
+@app.route("/api/oracle/<oid>", methods=["GET"])
+def oracle_get(oid):
+    inst = oracle_engine.get_instance(oid)
+    if inst is None:
+        return jsonify({"error": "unknown oracle instance"}), 404
+    return jsonify({"status": "ok", "instance": inst})
+
+
+@app.route("/api/oracle/<oid>/pin", methods=["POST"])
+def oracle_pin(oid):
+    return jsonify(oracle_engine.pin(oid))
+
+
+@app.route("/api/oracle/<oid>/drift", methods=["POST"])
+def oracle_drift(oid):
+    body = request.get_json(silent=True) or {}
+    return jsonify(oracle_engine.inject_drift_source(oid, body.get("source")))
+
+
+@app.route("/api/oracle/<oid>/reset", methods=["POST"])
+def oracle_reset(oid):
+    return jsonify(oracle_engine.reset(oid))
+
+
+@app.route("/api/narratives/generate", methods=["POST"])
+def narratives_generate():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sdir = _session_dir(sid)
+    understanding, schema_index, dfs, error = _ensure_indexes(sid, sess, sdir)
+    if error:
+        return jsonify(error[0]), error[1]
+
+    result = narrative_engine.generate_narrative(sid, sess, sdir, dfs, understanding, schema_index,
+                                                  dataset_fingerprint=sess.get("dataset_fingerprint"),
+                                                  dataset_version_id=sess.get("dataset_version_id"),
+                                                  enable_oracles=bool(sess.get("oracles_enabled", False)))
+    db.persist_session(sid, sess)
+    return jsonify(result)
+
+
+@app.route("/api/act/enable-oracles", methods=["POST"])
+def act_enable_oracles():
+    """The Act 2 -> Act 3 transition: from here on Evidence benchmarks
+    against outside sources and Narratives cite them — nothing else about
+    the session (trials, notebook results, analysis) changes or re-runs."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    sess["oracles_enabled"] = True
+    sess["act"] = 3
+    return jsonify({"status": "ok", "act": 3, "oracles_enabled": True})
+
+
+@app.route("/api/narratives", methods=["GET"])
+def narratives_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    rows = db.list_narratives(sid, include_synthetic=False)
+    rows.sort(key=lambda n: n.get("created_at", 0), reverse=True)
+    return jsonify({"status": "ok", "narratives": rows})
+
+
+@app.route("/api/datasets/<sid>/versions", methods=["GET"])
+def dataset_versions(sid):
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    versions = dataset_registry.list_versions(sid)
+    stats = db.cache_stats(versions[-1]["fingerprint"]) if versions else {"cached_artifacts": 0, "cache_hits": 0}
+    return jsonify({"status": "ok", "versions": versions, "current_cache_stats": stats})
+
+
+def _quality_tier(avg_missing_pct: float) -> list:
+    if avg_missing_pct > 20:
+        return ["red", "Missingness flagged"]
+    if avg_missing_pct > 5:
+        return ["amber", f"{avg_missing_pct:.0f}% missing"]
+    return ["green", "Clean"]
+
+
+@app.route("/api/datasets/<sid>/tables", methods=["GET"])
+def dataset_tables(sid):
+    """Real per-table catalog — every dataset here is honestly one session's
+    set of canonical tables (raw domains + derived ADaM/etc outputs), not a
+    multi-file upload catalog with independent version histories. Built from
+    the same dataset-version manifest and schema index the rest of the
+    pipeline already computes, not new data."""
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    version = dataset_registry.get_current(sid)
+    if version is None:
+        return jsonify({"status": "ok", "tables": []})
+
+    schema = (sess.get("indexes") or {}).get("schema", {})
+    tables = []
+    for var, meta in version["manifest"].items():
+        cols_meta = schema.get(var, {})
+        missing_vals = [c["missing_pct"] for c in cols_meta.values()] if cols_meta else []
+        avg_missing = sum(missing_vals) / len(missing_vals) if missing_vals else 0.0
+        tables.append({
+            "name": var, "rows": meta["rows"], "cols": meta["cols"],
+            "dtypes": meta["dtypes"], "avg_missing_pct": round(avg_missing, 1),
+            "quality": _quality_tier(avg_missing),
+            "dataset_version": version["version"], "dataset_version_id": version["id"],
+        })
+    tables.sort(key=lambda t: t["name"])
+    return jsonify({"status": "ok", "tables": tables, "dataset_version": version["version"]})
+
+
+@app.route("/api/narratives/<nid>", methods=["GET"])
+def narratives_get(nid):
+    narrative = db.get_narrative(nid)
+    if narrative is None:
+        return jsonify({"error": "unknown narrative"}), 404
+    return jsonify({"status": "ok", "narrative": narrative})
+
+
+@app.route("/api/corpus", methods=["GET"])
+def corpus_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    corpus_store.ensure_filler(sid, understanding=sess.get("dataset_understanding"))
+    rows = corpus_store.list_corpus(sid, status=request.args.get("status"), q=request.args.get("q"))
+    return jsonify({"status": "ok", "narratives": rows})
+
+
+@app.route("/api/registry", methods=["GET"])
+def registry_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    rows = hypothesis_registry.list_for_session(sid)
+    return jsonify({"status": "ok", "rows": rows})
+
+
+@app.route("/api/registry/publish", methods=["POST"])
+def registry_publish():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    claim = body.get("claim")
+    if not store.session_exists(sid) or not claim:
+        return jsonify({"error": "session_id and claim required"}), 400
+    result = hypothesis_registry.publish(sid, claim, narrative_id=body.get("narrative_id"),
+                                          dag=body.get("dag"), q_value=body.get("q_value"))
+    return jsonify(result), result["http_status"]
+
+
+@app.route("/api/evidence", methods=["GET"])
+def evidence_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    rows = evidence.list_for_session(sid, kind=request.args.get("kind"))
+    return jsonify({"status": "ok", "evidence": rows})
+
+
+@app.route("/api/evidence/<eid>", methods=["GET"])
+def evidence_get(eid):
+    row = evidence.get(eid)
+    if row is None:
+        return jsonify({"error": "unknown evidence"}), 404
+    return jsonify({"status": "ok", "evidence": row})
+
+
+@app.route("/api/evidence/bulk", methods=["POST"])
+def evidence_bulk():
+    body = request.get_json(force=True)
+    rows = evidence.get_bulk(body.get("ids", []))
+    return jsonify({"status": "ok", "evidence": rows})
+
+
+@app.route("/api/evidence/<eid>/review", methods=["POST"])
+def evidence_review(eid):
+    body = request.get_json(force=True)
+    decision = body.get("decision")
+    if decision not in ("approved", "rejected"):
+        return jsonify({"error": "decision must be 'approved' or 'rejected'"}), 400
+    if evidence.get(eid) is None:
+        return jsonify({"error": "unknown evidence"}), 404
+    if decision == "approved":
+        evidence.approve(eid)
+    else:
+        evidence.reject(eid)
+    return jsonify({"status": "ok", "evidence": evidence.get(eid)})
+
+
+@app.route("/api/evidence/annotate", methods=["POST"])
+def evidence_annotate():
+    """Human-authored evidence — e.g. a reviewer's own observation, not
+    computed by an agent. kind="human_annotation" throughout."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    claim = body.get("claim")
+    if not store.session_exists(sid) or not claim:
+        return jsonify({"error": "session_id and claim required"}), 400
+    sess = store.get_session(sid)
+    row = evidence.from_human_annotation(sid, sess.get("dataset_version_id"), claim,
+                                          values=body.get("values"), limitations=body.get("limitations"))
+    return jsonify({"status": "ok", "evidence": row})
+
+
+@app.route("/api/evidence/benchmark", methods=["POST"])
+def evidence_benchmark():
+    """Takes one already-computed analysis (dashboard) from this session and
+    checks it against outside published sources via the Oracle Agent —
+    the Evidence stage's own autonomous "look outside the data" action,
+    one analysis at a time so a single decline/failure doesn't block the rest."""
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    did = body.get("dashboard_id")
+    if not store.session_exists(sid) or not did:
+        return jsonify({"error": "session_id and dashboard_id required"}), 400
+    sess = store.get_session(sid)
+    artifact = next((d for d in sess.get("dashboards", []) if d["dashboard_id"] == did), None)
+    if artifact is None:
+        return jsonify({"error": "unknown dashboard_id"}), 404
+    understanding = sess.get("dataset_understanding") or {}
+    result = narrative_engine.resolve_evidence_benchmark(
+        sid, sess.get("dataset_version_id"), artifact.get("question", artifact.get("title", "")),
+        artifact.get("stats", {}), understanding,
+    )
+    if result.get("status") == "ok" and result.get("evidence_id"):
+        artifact["evidence_id"] = result["evidence_id"]
+    return jsonify(result)
+
+
+@app.route("/api/norms", methods=["GET"])
+def norms_list():
+    return jsonify({"status": "ok", "norms": norm_registry.list_all_current(), "oracle_types": oracle_engine.ORACLE_TYPES})
+
+
+@app.route("/api/norms/resolve", methods=["POST"])
+def norms_resolve():
+    body = request.get_json(force=True)
+    oracle_type = body.get("oracle_type")
+    metric = body.get("metric")
+    population = body.get("population") or {}
+    if not oracle_type or not metric:
+        return jsonify({"error": "oracle_type and metric required"}), 400
+    result = norm_registry.resolve_and_register(oracle_type, metric, population)
+    return jsonify(result)
+
+
+@app.route("/api/norms/compare", methods=["POST"])
+def norms_compare():
+    body = request.get_json(force=True)
+    metric = body.get("metric")
+    population = body.get("population") or {}
+    value = body.get("value")
+    sample_size = body.get("sample_size", 0)
+    if not metric or value is None:
+        return jsonify({"error": "metric and value required"}), 400
+    result = norm_registry.compare_to_norm(float(value), metric, population, int(sample_size))
+    return jsonify(result)
+
+
+@app.route("/api/norms/history", methods=["POST"])
+def norms_history():
+    body = request.get_json(force=True)
+    metric = body.get("metric")
+    population = body.get("population") or {}
+    if not metric:
+        return jsonify({"error": "metric required"}), 400
+    return jsonify({"status": "ok", "versions": norm_registry.get_version_history(metric, population)})
+
+
+@app.route("/api/norms/<nid>/approve", methods=["POST"])
+def norms_approve(nid):
+    if db.get_norm(nid) is None:
+        return jsonify({"error": "unknown norm"}), 404
+    norm_registry.approve(nid)
+    return jsonify({"status": "ok", "norm": db.get_norm(nid)})
+
+
+@app.route("/api/workspaces", methods=["POST"])
+def workspaces_create():
+    body = request.get_json(force=True)
+    sid = body.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    sess = store.get_session(sid)
+    ws = narrative_workspace.create(
+        sid, body.get("title", "Untitled narrative"), body.get("thesis", ""),
+        body.get("audience", "scientist"), body.get("lens", "efficacy"),
+        sess.get("dataset_version_id"), evidence_ids=body.get("evidence_ids"), blocks=body.get("blocks"),
+    )
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces", methods=["GET"])
+def workspaces_list():
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+    return jsonify({"status": "ok", "workspaces": narrative_workspace.list_for_session(sid)})
+
+
+@app.route("/api/workspaces/<wid>", methods=["GET"])
+def workspaces_get(wid):
+    ws = narrative_workspace.get(wid)
+    if ws is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces/<wid>/blocks", methods=["POST"])
+def workspaces_update_blocks(wid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    body = request.get_json(force=True)
+    ws = narrative_workspace.update_blocks(wid, body.get("blocks", []))
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces/<wid>/meta", methods=["POST"])
+def workspaces_update_meta(wid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    body = request.get_json(force=True)
+    ws = narrative_workspace.update_meta(wid, **body)
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces/<wid>/evidence", methods=["POST"])
+def workspaces_add_evidence(wid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    body = request.get_json(force=True)
+    eid = body.get("evidence_id")
+    if not eid or evidence.get(eid) is None:
+        return jsonify({"error": "unknown evidence_id"}), 400
+    ws = narrative_workspace.add_evidence(wid, eid)
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces/<wid>/evidence/<eid>", methods=["DELETE"])
+def workspaces_remove_evidence(wid, eid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    ws = narrative_workspace.remove_evidence(wid, eid)
+    return jsonify({"status": "ok", "workspace": ws})
+
+
+@app.route("/api/workspaces/<wid>/transition", methods=["POST"])
+def workspaces_transition(wid):
+    body = request.get_json(force=True)
+    result = narrative_workspace.transition(wid, body.get("status"))
+    return jsonify(result), (200 if result["status"] == "ok" else 409)
+
+
+@app.route("/api/workspaces/<wid>/branch", methods=["POST"])
+def workspaces_branch(wid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    body = request.get_json(force=True)
+    branch = narrative_workspace.branch(wid, body.get("title", "Branch"),
+                                         body.get("audience", "scientist"), body.get("lens", "efficacy"))
+    return jsonify({"status": "ok", "workspace": branch})
+
+
+@app.route("/api/workspaces/<wid>/branches", methods=["GET"])
+def workspaces_branches(wid):
+    return jsonify({"status": "ok", "branches": narrative_workspace.list_branches(wid)})
+
+
+@app.route("/api/workspaces/compare", methods=["GET"])
+def workspaces_compare():
+    a, b = request.args.get("a"), request.args.get("b")
+    result = narrative_workspace.compare(a, b)
+    if result is None:
+        return jsonify({"error": "unknown workspace(s)"}), 404
+    return jsonify({"status": "ok", "comparison": result})
+
+
+@app.route("/api/workspaces/<wid>/comments", methods=["GET"])
+def workspaces_list_comments(wid):
+    return jsonify({"status": "ok", "comments": narrative_workspace.list_comments(wid, track=request.args.get("track"))})
+
+
+@app.route("/api/workspaces/<wid>/comments", methods=["POST"])
+def workspaces_add_comment(wid):
+    if narrative_workspace.get(wid) is None:
+        return jsonify({"error": "unknown workspace"}), 404
+    body = request.get_json(force=True)
+    result = narrative_workspace.add_comment(wid, body.get("track"), body.get("author", "anonymous"),
+                                              body.get("comment", ""), body.get("block_index"))
+    return jsonify(result), (200 if result["status"] == "ok" else 400)
+
+
+@app.route("/api/comments/<cid>/resolve", methods=["POST"])
+def comments_resolve(cid):
+    narrative_workspace.resolve_comment(cid)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/reviews", methods=["GET"])
+def reviews_list():
+    """Cross-workspace review queue — every open analysis/narrative comment
+    across every workspace in the session, plus norm revisions still
+    pending_review. Real aggregation over narrative_workspace.py's per-
+    workspace comment threads and norm_registry.py's approval_status, not a
+    separate review system."""
+    sid = request.args.get("session_id")
+    if not store.session_exists(sid):
+        return jsonify({"error": "unknown session"}), 404
+
+    rows = []
+    for ws in narrative_workspace.list_for_session(sid):
+        for c in narrative_workspace.list_comments(ws["id"]):
+            rows.append({
+                "kind": "comment", "id": c["id"], "target": ws["title"], "target_id": ws["id"],
+                "track": c["track"], "author": c["author"], "note": c["comment"],
+                "status": "resolved" if c["status"] == "resolved" else "open", "created_at": c["created_at"],
+            })
+    rows.sort(key=lambda r: r["created_at"], reverse=True)
+    return jsonify({"status": "ok", "reviews": rows, "open_count": sum(1 for r in rows if r["status"] == "open")})
+
+
+@app.route("/api/editor/lint", methods=["POST"])
+def editor_lint_route():
+    body = request.get_json(force=True)
+    notes = editor_lint.lint_blocks(body.get("blocks", []))
+    return jsonify({"status": "ok", "notes": notes})
 
 
 if __name__ == "__main__":

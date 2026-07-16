@@ -5,6 +5,24 @@ import pandas as pd
 
 MODEL = "claude-sonnet-4-6"
 
+FORBIDDEN_PATTERNS = [
+    "import os", "import sys", "import subprocess",
+    "__import__", "open(", "exec(", "eval(",
+]
+
+
+def extract_code_block(text: str) -> str | None:
+    match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
+    if not match:
+        match = re.search(r"```\s*\n(.*?)```", text, re.DOTALL)
+    if not match:
+        match = re.search(r"```(?:python)?\s*\n(.*)", text, re.DOTALL)
+    return match.group(1).strip() if match else None
+
+
+def forbidden_hits(code: str) -> list:
+    return [p for p in FORBIDDEN_PATTERNS if p in code]
+
 SYSTEM_PROMPT = """You are a bioinformatics and clinical data scientist writing Python for a scientific notebook.
 You receive rich context about the data: schema, biological interpretation of every column, recommended analyses, and which variables are derived vs raw.
 
@@ -323,22 +341,13 @@ def generate_code(session_dir: str, available_vars: list, request_text: str,
 
     text = "".join(block.text for block in response.content if block.type == "text")
 
-    match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
-    if not match:
-        match = re.search(r"```\s*\n(.*?)```", text, re.DOTALL)
-    if not match:
-        match = re.search(r"```(?:python)?\s*\n(.*)", text, re.DOTALL)
-    if not match:
+    code = extract_code_block(text)
+    if code is None:
+        print(f"[codegen] no code block in response: {text[:2000]}")
         return {"status": "error",
-                "error": "Model did not return a code block. Raw response: " + text[:300]}
+                "error": "Model did not return a code block. Try rephrasing your request."}
 
-    code = match.group(1).strip()
-
-    forbidden = [
-        "import os", "import sys", "import subprocess",
-        "__import__", "open(", "exec(", "eval(",
-    ]
-    hits = [f for f in forbidden if f in code]
+    hits = forbidden_hits(code)
     if hits:
         return {"status": "error",
                 "error": f"Generated code contained disallowed pattern(s): {hits}. Refusing to run it."}

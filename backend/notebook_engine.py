@@ -2,28 +2,22 @@ import json
 import os
 import pickle
 import queue
-import subprocess
-import sys
 import threading
+
+import dataset_registry
+import sandbox_runner
 
 EXEC_TIMEOUT_SECONDS = 30
 KERNEL_STARTUP_TIMEOUT = 60
-
-_RUNNER = os.path.join(os.path.dirname(__file__), "kernel_runner.py")
 
 _kernels: dict[str, dict] = {}
 _kernels_lock = threading.Lock()
 
 
-def _start_kernel() -> dict:
-    proc = subprocess.Popen(
-        [sys.executable, _RUNNER],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
+def _start_kernel(session_dir: str) -> dict:
+    entry = sandbox_runner.start_kernel_process(session_dir)
+    proc = entry["proc"]
+
     import time
     t0 = time.monotonic()
     while True:
@@ -34,10 +28,11 @@ def _start_kernel() -> dict:
         if "___PROBE_READY___" in line:
             break
         if time.monotonic() - t0 > KERNEL_STARTUP_TIMEOUT:
-            proc.kill()
+            sandbox_runner.kill_kernel(entry)
             raise RuntimeError("Kernel startup timed out")
 
-    return {"proc": proc, "lock": threading.Lock()}
+    entry["lock"] = threading.Lock()
+    return entry
 
 
 def _get_kernel(session_dir: str) -> dict:
@@ -45,7 +40,7 @@ def _get_kernel(session_dir: str) -> dict:
         entry = _kernels.get(session_dir)
         if entry is not None and entry["proc"].poll() is None:
             return entry
-        entry = _start_kernel()
+        entry = _start_kernel(session_dir)
         _kernels[session_dir] = entry
         return entry
 
@@ -74,6 +69,19 @@ def available_vars(session_dir):
     return [f[:-4] for f in os.listdir(session_dir) if f.endswith(".pkl")]
 
 
+def _protected_vars(session_dir: str) -> list:
+    """The canonical dataset's own variable names — raw domains and derived
+    ADaM/etc tables — so the kernel can refuse to let generated analysis
+    code silently overwrite them. sid is just the directory's basename;
+    dataset_registry stores versions per sid, not per path."""
+    sid = os.path.basename(session_dir.rstrip("/"))
+    try:
+        version = dataset_registry.get_current(sid)
+    except Exception:
+        return []
+    return list(version["manifest"].keys()) if version else []
+
+
 def run_cell(session_dir: str, code: str) -> dict:
     os.makedirs(session_dir, exist_ok=True)
 
@@ -81,7 +89,7 @@ def run_cell(session_dir: str, code: str) -> dict:
     proc = entry["proc"]
     cell_lock = entry["lock"]
 
-    request_line = json.dumps({"session_dir": session_dir, "code": code}) + "\n"
+    request_line = json.dumps({"session_dir": session_dir, "code": code, "protected": _protected_vars(session_dir)}) + "\n"
 
     with cell_lock:
         try:
@@ -122,7 +130,7 @@ def run_cell(session_dir: str, code: str) -> dict:
         except queue.Empty:
             with _kernels_lock:
                 _kernels.pop(session_dir, None)
-            proc.kill()
+            sandbox_runner.kill_kernel(entry)
             return {"status": "error", "error": f"Execution exceeded {EXEC_TIMEOUT_SECONDS}s timeout."}
 
     if kind == "dead":

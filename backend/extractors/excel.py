@@ -33,7 +33,8 @@ def extract_xlsx(content: bytes, filename: str) -> dict:
         if plate_detected:
             df.columns = columns
             reshaped = _reshape_plate(df)
-            mapping = map_columns(list(reshaped.columns))
+            examples_map = {c: reshaped[c].dropna().astype(str).unique()[:3].tolist() for c in reshaped.columns}
+            mapping = map_columns(list(reshaped.columns), examples_map)
             sheets_out.append({
                 "sheet_name": sheet,
                 "status": "ok",
@@ -45,7 +46,9 @@ def extract_xlsx(content: bytes, filename: str) -> dict:
                 "preview": reshaped.head(6).to_dict(orient="records"),
             })
         else:
-            mapping = map_columns(columns)
+            df.columns = columns
+            examples_map = {c: df[c].dropna().astype(str).unique()[:3].tolist() for c in columns}
+            mapping = map_columns(columns, examples_map)
             sheets_out.append({
                 "sheet_name": sheet,
                 "status": "ok",

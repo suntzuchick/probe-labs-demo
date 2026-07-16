@@ -44,9 +44,11 @@ def _trace_mapping_lines(mapping):
                 "text": f"column \"{m['source_label']}\" \u2192 best match {m['top_match']} ({pct}%) \u2014 below 85% auto-map threshold, holding for confirmation. candidates: {cands}",
             })
         else:
+            examples = m.get("examples") or []
+            ex_text = f" \u2014 e.g. {', '.join(examples)}" if examples else ""
             lines.append({
                 "level": "reject",
-                "text": f"column \"{m['source_label']}\" \u2192 no candidate scored above 55% (best: {m['top_match']} at {pct}%) \u2014 rejected, no vocabulary match",
+                "text": f"column \"{m['source_label']}\" \u2192 no candidate scored above 55% (best: {m['top_match']} at {pct}%) \u2014 no clinical/lab vocabulary match{ex_text}; kept as a plain column, not mapped to a canonical variable",
             })
     return lines
 

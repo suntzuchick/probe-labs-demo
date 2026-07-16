@@ -26,6 +26,11 @@ TARGET_VARIABLES = {
     "DSDECOD": {"desc": "disposition decoded reason discontinuation death status", "synonyms": ["dsdecod", "disposition_reason", "discontinuation_reason", "status"]},
     "DSDTC": {"desc": "disposition date", "synonyms": ["dsdtc", "disposition_date", "status_date"]},
 
+    "DVTERM": {"desc": "protocol deviation verbatim term reported", "synonyms": ["dvterm", "deviation_term", "pd_term", "deviation_description"]},
+    "DVDECOD": {"desc": "protocol deviation decoded category reason", "synonyms": ["dvdecod", "deviation_reason", "deviation_category", "pd_reason"]},
+    "DVCAT": {"desc": "protocol deviation major minor classification severity", "synonyms": ["dvcat", "deviation_class", "deviation_severity", "major_minor"]},
+    "DVDTC": {"desc": "protocol deviation date", "synonyms": ["dvdtc", "deviation_date", "pd_date"]},
+
     "LBTEST": {"desc": "laboratory test name analyte measured", "synonyms": ["lbtest", "test_name", "analyte", "assay_name"]},
     "LBORRES": {"desc": "laboratory result original value measured", "synonyms": ["lborres", "result", "value", "measured_value", "raw_result"]},
     "LBORRESU": {"desc": "laboratory result unit of measure", "synonyms": ["lborresu", "unit", "units", "uom"]},
@@ -85,11 +90,16 @@ def map_variable(source_label: str, source_values_sample: list = None) -> dict:
         "top_match": best_var,
         "confidence": best_score,
         "candidates": [{"var": v, "score": s} for v, s in top3],
+        "examples": source_values_sample or [],
     }
 
 
-def map_columns(columns: list, sample_rows: list = None) -> list:
-    return [map_variable(c) for c in columns]
+def map_columns(columns: list, examples_map: dict | None = None) -> list:
+    """examples_map: optional {column_name: [example values]} — lets a
+    REJECT (no vocabulary match) still carry real values instead of just a
+    bare "no match" verdict, so the trace stays informative for columns
+    that were never going to be clinical/lab vocabulary in the first place."""
+    return [map_variable(c, source_values_sample=(examples_map or {}).get(c)) for c in columns]
 
 
 def is_plate_layout(columns: list, first_col_values: list) -> bool:

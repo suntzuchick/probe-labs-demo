@@ -69,10 +69,37 @@ PIPELINE_PROVENANCE = {
         "transform": "(EVENT_DT − TRTSDT).dt.days — overall survival duration in days",
         "confidence": 1.00,
     },
+    "adsl.NDEVS": {
+        "source": "dv.USUBJID",
+        "transform": "count of protocol deviation rows per subject (0 if none) — present only when DV was ingested",
+        "confidence": 1.00,
+    },
+    "adsl.MAJDVFL": {
+        "source": "dv[DVCAT == 'MAJOR'].USUBJID",
+        "transform": "'Y' if subject has ≥1 MAJOR-category deviation, else 'N' — present only when DV was ingested",
+        "confidence": 1.00,
+    },
 }
 
 
-def derive_adsl(dm: pd.DataFrame, ex: pd.DataFrame, ds: pd.DataFrame) -> pd.DataFrame:
+def derive_addv(dv: pd.DataFrame, adsl: pd.DataFrame) -> pd.DataFrame:
+    """Per-subject protocol deviation summary — every ADSL subject gets a row,
+    including those with zero deviations (NDEVS=0, MAJDVFL='N'), so this joins
+    cleanly for rate-by-arm questions without silently dropping the clean subjects."""
+    counts = dv.groupby("USUBJID").size().rename("NDEVS")
+    major = (
+        dv[dv["DVCAT"].str.upper() == "MAJOR"].groupby("USUBJID").size().rename("N_MAJOR_DEVS")
+    )
+    addv = adsl[["USUBJID", "ARMCD", "ARM"]].copy()
+    addv = addv.merge(counts, on="USUBJID", how="left")
+    addv = addv.merge(major, on="USUBJID", how="left")
+    addv["NDEVS"] = addv["NDEVS"].fillna(0).astype(int)
+    addv["N_MAJOR_DEVS"] = addv["N_MAJOR_DEVS"].fillna(0).astype(int)
+    addv["MAJDVFL"] = (addv["N_MAJOR_DEVS"] > 0).map({True: "Y", False: "N"})
+    return addv
+
+
+def derive_adsl(dm: pd.DataFrame, ex: pd.DataFrame, ds: pd.DataFrame, dv: pd.DataFrame | None = None) -> pd.DataFrame:
     adsl = dm[["USUBJID", "STUDYID", "AGE", "SEX", "ARMCD", "ARM", "KRASMUT", "ECOGBL"]].copy()
 
     first_dose = (
@@ -93,6 +120,10 @@ def derive_adsl(dm: pd.DataFrame, ex: pd.DataFrame, ds: pd.DataFrame) -> pd.Data
 
     adsl["ITTFL"] = "Y"
     adsl["SAFFL"] = adsl["TRTSDT"].notna().map({True: "Y", False: "N"})
+
+    if dv is not None and not dv.empty:
+        addv = derive_addv(dv, adsl)
+        adsl = adsl.merge(addv[["USUBJID", "NDEVS", "N_MAJOR_DEVS", "MAJDVFL"]], on="USUBJID", how="left")
 
     return adsl
 
@@ -141,8 +172,8 @@ def derive_adtte(adsl: pd.DataFrame) -> pd.DataFrame:
     return adtte
 
 
-def run_pipeline(dm, ex, ae, rs, ds):
-    adsl = derive_adsl(dm, ex, ds)
+def run_pipeline(dm, ex, ae, rs, ds, dv=None):
+    adsl = derive_adsl(dm, ex, ds, dv=dv)
     adae = derive_adae(ae, adsl)
     adtte = derive_adtte(adsl)
     return adsl, adae, adtte

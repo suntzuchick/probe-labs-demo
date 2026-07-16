@@ -23,7 +23,8 @@ def extract_csv(content: bytes, filename: str, sep: str = ",") -> dict:
 
     if plate_detected:
         reshaped = _reshape_plate(df)
-        mapping = map_columns(list(reshaped.columns))
+        examples_map = {c: reshaped[c].dropna().astype(str).unique()[:3].tolist() for c in reshaped.columns}
+        mapping = map_columns(list(reshaped.columns), examples_map)
         preview = reshaped.head(8).to_dict(orient="records")
         return {
             "status": "ok",
@@ -37,7 +38,8 @@ def extract_csv(content: bytes, filename: str, sep: str = ",") -> dict:
             "raw_preview": df.head(8).to_dict(orient="records"),
         }
 
-    mapping = map_columns(columns)
+    examples_map = {c: df[c].dropna().astype(str).unique()[:3].tolist() for c in columns}
+    mapping = map_columns(columns, examples_map)
     preview = df.head(8).to_dict(orient="records")
 
     return {

@@ -30,7 +30,18 @@ def extract_json(content: bytes, filename: str) -> dict:
             for k in row.keys():
                 if k not in all_keys:
                     all_keys.append(k)
-        mapping = map_columns(all_keys)
+        examples_map = {}
+        for k in all_keys:
+            vals, seen = [], set()
+            for row in data:
+                v = row.get(k)
+                if v is not None and str(v) not in seen:
+                    seen.add(str(v))
+                    vals.append(str(v))
+                if len(vals) >= 3:
+                    break
+            examples_map[k] = vals
+        mapping = map_columns(all_keys, examples_map)
         return {
             "status": "ok",
             "filename": filename,
@@ -45,7 +56,8 @@ def extract_json(content: bytes, filename: str) -> dict:
     if isinstance(data, dict):
         flat = _flatten(data)
         leaf_keys = [k for k, v in flat.items() if not isinstance(v, (list, dict))]
-        mapping = map_columns(leaf_keys)
+        examples_map = {k: [str(flat[k])] for k in leaf_keys if flat.get(k) is not None}
+        mapping = map_columns(leaf_keys, examples_map)
         return {
             "status": "ok",
             "filename": filename,
