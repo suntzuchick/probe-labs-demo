@@ -2,10 +2,25 @@ import threading
 import time
 import uuid
 
+from flask import g, has_request_context
+
 import db
 
 _sessions = {}
 _lock = threading.Lock()
+
+
+def _mark_touched(sid):
+    # Records that this request read/wrote sid so the after_request hook in
+    # app.py can write-through whatever ends up in memory, regardless of
+    # which route touched it or whether that route remembers to persist.
+    if not has_request_context():
+        return
+    touched = getattr(g, "_touched_sessions", None)
+    if touched is None:
+        touched = set()
+        g._touched_sessions = touched
+    touched.add(sid)
 
 CLINICAL_DOMAINS = ["DM", "EX", "AE", "RS", "DS"]
 
@@ -30,6 +45,7 @@ def new_session() -> str:
     sid = uuid.uuid4().hex[:12]
     with _lock:
         _sessions[sid] = {"created_at": time.time(), **{k: (v.copy() if hasattr(v, "copy") else v) for k, v in _NEW_SESSION_DEFAULTS.items()}}
+    _mark_touched(sid)
     return sid
 
 
@@ -37,6 +53,7 @@ def get_session(sid: str) -> dict:
     with _lock:
         sess = _sessions.get(sid)
     if sess is not None:
+        _mark_touched(sid)
         return sess
     # Not resident in this process's memory — most likely this is a fresh
     # backend process (a restart wipes `_sessions`, it's never been
@@ -55,6 +72,7 @@ def get_session(sid: str) -> dict:
     with _lock:
         _sessions.setdefault(sid, loaded)
         sess = _sessions[sid]
+    _mark_touched(sid)
     return sess
 
 
@@ -66,6 +84,15 @@ def update_session(sid: str, **kwargs):
     with _lock:
         if sid in _sessions:
             _sessions[sid].update(kwargs)
+    _mark_touched(sid)
+
+
+def peek(sid: str):
+    """In-memory snapshot without rehydrating or marking touched — used by
+    the after_request persistence hook so it reads back exactly what a
+    handler left in memory instead of re-triggering session resolution."""
+    with _lock:
+        return _sessions.get(sid)
 
 
 def missing_domains(sid: str) -> list:

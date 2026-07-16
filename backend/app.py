@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # dashboard and this is a no-op since no .env file exists there.
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 import pandas as pd
 
@@ -64,6 +64,24 @@ def handle_unexpected_error(e):
     # `python3 app.py`) and return real JSON so the frontend can show it.
     traceback.print_exc()
     return jsonify({"status": "error", "error": f"{type(e).__name__}: {e}"}), 500
+
+
+@app.after_request
+def _persist_touched_sessions(response):
+    # Write-through every session this request read or mutated, regardless
+    # of which route it was. Session state otherwise lives only in this
+    # worker's memory (session_store._sessions) and is lost on any restart;
+    # relying on individual routes to remember db.persist_session() left
+    # long stretches of the pipeline (derive, quality, dashboards, analysis)
+    # unpersisted, so "unknown session" showed up as soon as the process
+    # recycled mid-session.
+    touched = getattr(g, "_touched_sessions", None)
+    if touched:
+        for sid in touched:
+            sess = store.peek(sid)
+            if sess is not None:
+                db.persist_session(sid, sess)
+    return response
 
 
 def _session_token_from_request():
@@ -264,7 +282,6 @@ def session_info():
         if field in body:
             existing[field] = body[field].strip() if isinstance(body[field], str) else body[field]
     sess["user_info"] = existing
-    db.persist_session(sid, sess)
     return jsonify({"status": "ok"})
 
 
@@ -1122,8 +1139,6 @@ def index_build():
     sess["dataset_version_id"] = version["id"]
     sess["_understanding_built_for_fingerprint"] = version["fingerprint"]
 
-    db.persist_session(sid, sess)
-
     return jsonify({
         "status": "ok",
         "context": context,
@@ -1820,7 +1835,6 @@ def narratives_generate():
                                                   dataset_fingerprint=sess.get("dataset_fingerprint"),
                                                   dataset_version_id=sess.get("dataset_version_id"),
                                                   enable_oracles=bool(sess.get("oracles_enabled", False)))
-    db.persist_session(sid, sess)
     return jsonify(result)
 
 

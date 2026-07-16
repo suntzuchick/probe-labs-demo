@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 WORKDIR /app/backend
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --timeout 240 --workers 1
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --timeout 240 --workers 1 --worker-class gthread --threads 4

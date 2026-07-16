@@ -3,6 +3,7 @@ import os
 import pickle
 import queue
 import threading
+import time
 
 import dataset_registry
 import sandbox_runner
@@ -10,15 +11,33 @@ import sandbox_runner
 EXEC_TIMEOUT_SECONDS = 30
 KERNEL_STARTUP_TIMEOUT = 60
 
+# Each kernel is a live subprocess with the full pandas/sklearn/statsmodels/
+# etc. stack imported (see kernel_runner.py) — hundreds of MB per session.
+# Without this, on the unsandboxed fallback (no Docker on Render, so the
+# --memory caps in sandbox_runner.py never actually apply) every session
+# that ever ran a cell stays resident forever, and memory grows until the
+# host OOM-kills the whole instance. Reap kernels nobody's touched in a
+# while so abandoned sessions don't accumulate.
+IDLE_KERNEL_TTL_SECONDS = 900
+
 _kernels: dict[str, dict] = {}
 _kernels_lock = threading.Lock()
+
+
+def _reap_idle_kernels():
+    now = time.monotonic()
+    with _kernels_lock:
+        stale = [sd for sd, entry in _kernels.items()
+                 if now - entry.get("last_used", now) > IDLE_KERNEL_TTL_SECONDS]
+        for sd in stale:
+            entry = _kernels.pop(sd)
+            sandbox_runner.kill_kernel(entry)
 
 
 def _start_kernel(session_dir: str) -> dict:
     entry = sandbox_runner.start_kernel_process(session_dir)
     proc = entry["proc"]
 
-    import time
     t0 = time.monotonic()
     while True:
         line = proc.stdout.readline()
@@ -32,13 +51,16 @@ def _start_kernel(session_dir: str) -> dict:
             raise RuntimeError("Kernel startup timed out")
 
     entry["lock"] = threading.Lock()
+    entry["last_used"] = time.monotonic()
     return entry
 
 
 def _get_kernel(session_dir: str) -> dict:
+    _reap_idle_kernels()
     with _kernels_lock:
         entry = _kernels.get(session_dir)
         if entry is not None and entry["proc"].poll() is None:
+            entry["last_used"] = time.monotonic()
             return entry
         entry = _start_kernel(session_dir)
         _kernels[session_dir] = entry
