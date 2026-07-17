@@ -1280,6 +1280,7 @@ def dashboards_followups():
     question = body.get("question")
     stats = body.get("stats") or {}
     chart_type = body.get("chart_type")
+    n = body.get("n", 1)
 
     if not store.session_exists(sid) or not question:
         return jsonify({"error": "session_id and question required"}), 400
@@ -1289,7 +1290,7 @@ def dashboards_followups():
     if error:
         return jsonify(error[0]), error[1]
 
-    return jsonify(dashboard_engine.generate_followups(understanding, schema_index, dfs, question, stats, chart_type))
+    return jsonify(dashboard_engine.generate_followups(understanding, schema_index, dfs, question, stats, chart_type, n=n))
 
 
 @app.route("/api/analysis/candidates", methods=["GET"])

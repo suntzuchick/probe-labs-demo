@@ -1728,7 +1728,16 @@
   // questionnaire decided before the data was ever looked at. See
   // _makeHypothesisRunner, shared with Act 2/3's cross-trial notebook below.
 
-  var MAX_TREE_DEPTH = 2;
+  var MAX_TREE_DEPTH = 3;
+  // Each question run here is an LLM call plus a kernel execution against a
+  // single long-lived subprocess that never frees memory mid-session — an
+  // uncapped run (previously: every grounded candidate, 10-14, each fanning
+  // out up to 3 followups per level) grows that subprocess until the Render
+  // instance OOMs partway through. Bound the whole run to a fixed budget:
+  // at most 3 initial questions, at most 9 questions total (initials +
+  // followups combined), so a session's total kernel/LLM load is predictable.
+  var INITIAL_QUESTION_CAP = 3;
+  var TOTAL_QUESTION_CAP = 9;
 
   function _makeHypothesisRunner(cfg) {
     // state: [{question, required_fields, chart_type, rationale, grounded,
@@ -1785,7 +1794,7 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             session_id: sessionId, question: parent.question,
-            stats: parent._lastStats || {}, chart_type: parent._lastChartType,
+            stats: parent._lastStats || {}, chart_type: parent._lastChartType, n: 1,
           }),
         });
         var data = await res.json();
@@ -1805,9 +1814,12 @@
       btn.style.display = "none";
 
       var failed = 0;
-      for (var i = 0; i < state.length; i++) {
+      var ranCount = 0;
+      var initialRan = 0;
+      for (var i = 0; i < state.length && ranCount < TOTAL_QUESTION_CAP; i++) {
         var q = state[i];
         if (!(q.grounded && q.status === "pending")) continue;
+        if (q.depth === 0 && initialRan >= INITIAL_QUESTION_CAP) continue;
         q.status = "running";
         render();
         try {
@@ -1820,8 +1832,10 @@
             q.status = "done";
             q._lastStats = data.dashboard.stats;
             q._lastChartType = data.dashboard.chart_type;
+            ranCount++;
+            if (q.depth === 0) initialRan++;
             await cfg.refreshLibrary();
-            await fetchFollowups(q);
+            if (ranCount < TOTAL_QUESTION_CAP) await fetchFollowups(q);
           } else {
             q.status = "failed";
             failed++;
